@@ -2,7 +2,7 @@
 # https://biometrics.nist.gov/cs_links/EMNIST/gzip.zip
 # Move all files into the folder: move_to_your_foler/EMNIST/raw
 
-ROOT = './data'
+ROOT = 'root/of/the/EMNIST/raw' # '/cluster/scratch/khyeongkyun/UZH-MT/data'
 
 import os
 import torchvision.datasets.utils as utils
