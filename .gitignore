@@ -1,1 +1,4 @@
-data/EMNIST
+tmp*
+\tmp
+*.err
+*.sh
