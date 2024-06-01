@@ -23,7 +23,7 @@ labels={
   "Garbage" : "Garbage Class",
   "EOS" : "Entropic Open-Set",
   "Objectosphere" : "Objectosphere",
-  "MultipleBinary" : "Multiple Binary Classifiers",
+  "MultiBinary" : "Multiple Binary Classifiers",
 }
 
 def command_line_options():
@@ -49,7 +49,7 @@ def command_line_options():
 def load_network(args,which):
     network_file = f"{args.arch}/{which}/{which}.model"
     if os.path.exists(network_file):
-        net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False) # NOTE: What is the effect of bias terms in the final layer? For both trianing and evaluation, we set it as False.
+        net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False)
         net.load_state_dict(torch.load(network_file))
         tools.device(net)
         return net
@@ -96,8 +96,12 @@ def evaluate(args):
         test_gt, test_predicted = extract(test_set, net)
 
         # compute probabilities
-        val_predicted = torch.nn.functional.softmax(torch.tensor(val_predicted), dim=1).detach().numpy()
-        test_predicted  = torch.nn.functional.softmax(torch.tensor(test_predicted ), dim=1).detach().numpy()
+        if which == "MultiBinary":
+            val_predicted = ... # TODO: Inference Steps for Multi-Binary Classifier
+            test_predicted = ...
+        else:
+            val_predicted = torch.nn.functional.softmax(torch.tensor(val_predicted), dim=1).detach().numpy()
+            test_predicted  = torch.nn.functional.softmax(torch.tensor(test_predicted ), dim=1).detach().numpy()
 
         unkn_gt_label = -1
         if which == "Garbage":
