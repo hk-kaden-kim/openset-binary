@@ -1,13 +1,42 @@
 import torch
+from torch.nn import functional as F
+from .. import tools
 
-########################################################################
+"""This file contains different metrics that can be applied to evaluate the training"""
+
+
+def multi_binary_confidence(logits, target, num_of_classes=10):
+    """Measures the multi binary confidence of the correct class for known samples,
+    and 1 + negative_offset - max(confidence) for unknown samples.
+
+    Parameters:
+
+      logits: the output of the network, must be logits
+
+      target: the vector of true classes; can be -1 for unknown samples
+
+    Returns a tensor with two entries:
+
+      confidence: the sum of the confidence values for the samples
+
+      total: The total number of considered samples
+    """
+
+    with torch.no_grad():
+
+        enc_target = tools.target_encoding(target, num_of_classes, init=1, kn_target=0)
+        all_probs = F.sigmoid(logits)
+
+        confidence_by_sample = torch.mean(torch.abs(enc_target - all_probs), dim=1)
+        confidence = torch.sum(confidence_by_sample)
+
+    return torch.tensor((confidence, len(logits)))
+
+# #######################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
 # Date: 2024
 # Availability: https://github.com/Vastlab/vast?tab=readme-ov-file
-########################################################################
-
-
-"""This file contains different metrics that can be applied to evaluate the training"""
+# #######################################################################
 
 
 def accuracy(prediction, target):

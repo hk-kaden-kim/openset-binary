@@ -2,6 +2,40 @@ import torch
 from torch.nn import functional as F
 from .. import tools
 
+class multi_binary_loss:
+
+    def __init__(self, num_of_classes=10):
+        self.num_of_classes = num_of_classes
+        # self.eye = tools.device(torch.eye(self.num_of_classes))
+        # self.ones = tools.device(torch.ones(self.num_of_classes))
+        # self.unknowns_multiplier = 1.0 / self.num_of_classes
+
+    @tools.loss_reducer
+    def __call__(self, logit_values, target):
+        
+        # Encode target values
+        all_target = tools.target_encoding(target, self.num_of_classes)
+
+        # Calculate probabilities for each sample
+        all_probs = F.sigmoid(logit_values)
+
+        # Get balancing weights
+        t_weights = torch.ones(self.num_of_classes) # TODO: Task-Balance
+        s_weights = torch.ones(logit_values.shape[0]) # TODO: Class-Balance
+    
+        # Calculate Loss by each binary classifier
+        for j in range(all_probs.shape[1]):
+            probs = all_probs[:,j]
+            targets = all_target[:,j]
+            task_loss = (t_weights[j] * F.binary_cross_entropy(probs, targets, s_weights)).reshape(-1)
+            if j == 0:
+                all_loss = task_loss
+            else:
+                all_loss = torch.concat([all_loss, task_loss])
+
+        return all_loss
+
+
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
 # Date: 2024
@@ -57,4 +91,3 @@ class objectoSphere_loss:
         if sample_weights is not None:
             loss = sample_weights * loss
         return loss
-

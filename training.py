@@ -30,15 +30,16 @@ def command_line_options():
                     During training model with best performance on validation set in the no_of_epochs is used.'
     )
 
-    parser.add_argument("--approach", "-a", required=True, choices=['SoftMax', 'Garbage', 'EOS', 'Objectosphere','MultipleBinary'])
+    parser.add_argument("--approach", "-a", required=True, choices=['SoftMax', 'Garbage', 'EOS', 'Objectosphere','MultiBinary'])
     parser.add_argument("--arch", default='LeNet_plus_plus', choices=['LeNet', 'LeNet_plus_plus'])
     parser.add_argument('--second_loss_weight', "-w", help='Loss weight for Objectosphere loss', type=float, default=0.0001)
     parser.add_argument('--Minimum_Knowns_Magnitude', "-m", help='Minimum Possible Magnitude for the Knowns', type=float,
                         default=50.)
-    parser.add_argument("--solver", dest="solver", default='sgd',choices=['sgd','adam'])
-    parser.add_argument("--lr", "-l", dest="lr", default=0.01, type=float)
-    parser.add_argument('--batch_size', "-b", help='Batch_Size', action="store", dest="Batch_Size", type=int, default=128)
+    parser.add_argument("--solver", default='sgd',choices=['sgd','adam'])
+    parser.add_argument("--lr", "-l", default=0.01, type=float)
+    parser.add_argument('--batch_size', "-b", help='Batch_Size', action="store", type=int, default=128)
     parser.add_argument("--no_of_epochs", "-e", dest="no_of_epochs", type=int, default=70)
+    parser.add_argument("--num_of_classes", "-c", default=10, help="Number of Classes to be classified")
     parser.add_argument("--dataset_root", "-d", default ="/tmp", help="Select the directory where datasets are stored.")
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
@@ -50,7 +51,7 @@ def get_loss_functions(args):
     split_ratio = 0.8
     emnist = dataset.EMNIST(args.dataset_root)
     if args.approach == "SoftMax":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=False) # NOTE: I've changed loading dataset. In particular, validation part. In original, It wasn't derived from 'Train' set, but from 'Test' set, and I couldn't find a splitting parameter. Is there any reason to take this approach?
+        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=False)
         return dict(
                     first_loss_func=nn.CrossEntropyLoss(reduction='none'),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
@@ -68,7 +69,7 @@ def get_loss_functions(args):
     elif args.approach == "EOS":
         training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
         return dict(
-                    first_loss_func=losses.entropic_openset_loss(),
+                    first_loss_func=losses.entropic_openset_loss(num_of_classes=args.num_of_classes),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
                     training_data = training_data,
                     val_data = val_data
@@ -76,21 +77,21 @@ def get_loss_functions(args):
     elif args.approach == "Objectosphere":
         training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
         return dict(
-                    first_loss_func=losses.entropic_openset_loss(),
+                    first_loss_func=losses.entropic_openset_loss(num_of_classes=args.num_of_classes),
                     second_loss_func=losses.objectoSphere_loss(args.Minimum_Knowns_Magnitude),
                     training_data = training_data,
                     val_data = val_data
                 )
 
     # # TODO: Newly added
-    # elif args.approach == "MultipleBinary":
-    #     training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=..., has_background_class=...)
-    #     return dict(
-    #                 first_loss_func= ... ,
-    #                 second_loss_func= ... , 
-    #                 training_data = training_data,
-    #                 val_data = val_data
-    #             )
+    elif args.approach == "MultiBinary":
+        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
+        return dict(
+                    first_loss_func=losses.multi_binary_loss(num_of_classes=args.num_of_classes),
+                    second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
+                    training_data = training_data,
+                    val_data = val_data,
+                )
 
 
 def train(args):
@@ -104,18 +105,19 @@ def train(args):
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # instantiate network and data loader
-    net = architectures.__dict__[args.arch](use_BG=args.approach == "Garbage",final_layer_bias=False)
+    net = architectures.__dict__[args.arch](use_BG=args.approach == "Garbage",
+                                            final_layer_bias=False)
     net = tools.device(net)
     train_data_loader = torch.utils.data.DataLoader(
         training_data,
-        batch_size=args.Batch_Size,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=5,
         pin_memory=True
     )
     val_data_loader = torch.utils.data.DataLoader(
         validation_data,
-        batch_size=args.Batch_Size,
+        batch_size=args.batch_size,
         pin_memory=True
     )
 
@@ -131,31 +133,40 @@ def train(args):
     prev_confidence = None
     for epoch in range(1, args.no_of_epochs + 1, 1):  # loop over the dataset multiple times
         t0 = time.time()
-
+        # print(f"epoch {epoch} - Training Start! {t0}")
         loss_history = []
         train_accuracy = torch.zeros(2, dtype=int)
         train_magnitude = torch.zeros(2, dtype=float)
         train_confidence = torch.zeros(2, dtype=float)
         net.train()
+        
+        b_idx = 1
         for x, y in train_data_loader:
+            # print(f"\tepoch {epoch} - {b_idx} Batch Start! {time.time()}")
             x = tools.device(x)
             y = tools.device(y)
             optimizer.zero_grad()
             logits, features = net(x)
+
             # first loss is always computed, second loss only for some loss functions
             loss = first_loss_func(logits, y) + args.second_loss_weight * second_loss_func(features, y)
 
             # metrics on training set
             train_accuracy += losses.accuracy(logits, y)
-            train_confidence += losses.confidence(logits, y)
+            if args.approach in ("MultiBinary"):
+                train_confidence += losses.multi_binary_confidence(logits, y, args.num_of_classes)
+            else:
+                train_confidence += losses.confidence(logits, y)
             if args.approach not in ("SoftMax", "Garbage"):
                 train_magnitude += losses.sphere(features, y, args.Minimum_Knowns_Magnitude if args.approach in args.approach == "Objectosphere" else None)
 
             loss_history.extend(loss.tolist())
             loss.mean().backward()
             optimizer.step()
+            b_idx += 1
 
         # metrics on validation set
+        # print(f"epoch {epoch} - Validation Start! {time.time()}")
         with torch.no_grad():
             val_loss = torch.zeros(2, dtype=float)
             val_accuracy = torch.zeros(2, dtype=int)
@@ -165,14 +176,17 @@ def train(args):
             for x,y in val_data_loader:
                 x = tools.device(x)
                 y = tools.device(y)
-                outputs = net(x)
-
-                loss = first_loss_func(outputs[0], y) + args.second_loss_weight * second_loss_func(outputs[1], y)
+                logits, features = net(x)
+                
+                loss = first_loss_func(logits, y) + args.second_loss_weight * second_loss_func(features, y)
                 val_loss += torch.tensor((torch.sum(loss), len(loss)))
-                val_accuracy += losses.accuracy(outputs[0], y)
-                val_confidence += losses.confidence(outputs[0], y)
+                val_accuracy += losses.accuracy(logits, y)
+                if args.approach in ("MultiBinary"):
+                    val_confidence += losses.multi_binary_confidence(logits, y, args.num_of_classes)
+                else:
+                    val_confidence += losses.confidence(logits, y)
                 if args.approach not in ("SoftMax", "Garbage"):
-                    val_magnitude += losses.sphere(outputs[1], y, args.Minimum_Knowns_Magnitude if args.approach == "Objectosphere" else None)
+                    val_magnitude += losses.sphere(features, y, args.Minimum_Knowns_Magnitude if args.approach == "Objectosphere" else None)
 
         # log statistics
         epoch_running_loss = torch.mean(torch.tensor(loss_history))
@@ -213,4 +227,5 @@ if __name__ == "__main__":
     else:
         print("Running in CPU mode, training might be slow")
         tools.set_device_cpu()
+    print(f"{args.approach}\t{args.arch}\t{args.dataset_root}")
     train(args)

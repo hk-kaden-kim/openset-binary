@@ -76,6 +76,9 @@ class LeNet_plus_plus(nn.Module):
             x = self.fc2(y)
             return x, y
         return y
+    
+    def deep_feature_forward(self, y):
+        return self.fc2(y)
 
 
 class LeNet(nn.Module):
