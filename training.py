@@ -31,7 +31,7 @@ def command_line_options():
     )
 
     parser.add_argument("--approach", "-a", required=True, choices=['SoftMax', 'Garbage', 'EOS', 'Objectosphere','MultiBinary'])
-    parser.add_argument("--arch", default='LeNet_plus_plus', choices=['LeNet', 'LeNet_plus_plus'])
+    parser.add_argument("--arch", "-ar", default='LeNet_plus_plus', choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
     parser.add_argument('--second_loss_weight', "-w", help='Loss weight for Objectosphere loss', type=float, default=0.0001)
     parser.add_argument('--Minimum_Knowns_Magnitude', "-m", help='Minimum Possible Magnitude for the Knowns', type=float,
                         default=50.)
@@ -40,7 +40,8 @@ def command_line_options():
     parser.add_argument('--batch_size', "-b", help='Batch_Size', action="store", type=int, default=128)
     parser.add_argument("--no_of_epochs", "-e", dest="no_of_epochs", type=int, default=70)
     parser.add_argument("--num_of_classes", "-c", default=10, help="Number of Classes to be classified")
-    parser.add_argument("--dataset_root", "-d", default ="/tmp", help="Select the directory where datasets are stored.")
+    parser.add_argument("--dataset", "-dt", default ="SmallScale", help="Choose the scale of training dataset.")
+    parser.add_argument("--dataset_root", "-rt", default ="/tmp", help="Select the directory where datasets are stored.")
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
@@ -49,9 +50,14 @@ def command_line_options():
 def get_loss_functions(args):
     """Returns the loss function and the data for training and validation"""
     split_ratio = 0.8
-    emnist = dataset.EMNIST(args.dataset_root)
+
+    if args.dataset == 'SmallScale':
+        data = dataset.EMNIST(args.dataset_root, convert_to_rgb=args.dataset == 'SmallScale' and 'ResNet' in args.arch)
+    else:
+        data = ... # LargeScale
+
     if args.approach == "SoftMax":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=False)
+        training_data, val_data = data.get_train_set(split_ratio, include_negatives=False)
         return dict(
                     first_loss_func=nn.CrossEntropyLoss(reduction='none'),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
@@ -59,7 +65,7 @@ def get_loss_functions(args):
                     val_data = val_data,
                 )
     elif args.approach =="Garbage":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=True)
+        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=True)
         return dict(
                     first_loss_func=nn.CrossEntropyLoss(reduction='none'),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
@@ -67,7 +73,7 @@ def get_loss_functions(args):
                     val_data = val_data
                 )
     elif args.approach == "EOS":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
+        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
         return dict(
                     first_loss_func=losses.entropic_openset_loss(num_of_classes=args.num_of_classes),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
@@ -75,7 +81,7 @@ def get_loss_functions(args):
                     val_data = val_data
                 )
     elif args.approach == "Objectosphere":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
+        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
         return dict(
                     first_loss_func=losses.entropic_openset_loss(num_of_classes=args.num_of_classes),
                     second_loss_func=losses.objectoSphere_loss(args.Minimum_Knowns_Magnitude),
@@ -85,7 +91,7 @@ def get_loss_functions(args):
 
     # # TODO: Newly added
     elif args.approach == "MultiBinary":
-        training_data, val_data = emnist.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
+        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
         return dict(
                     first_loss_func=losses.multi_binary_loss(num_of_classes=args.num_of_classes),
                     second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
@@ -105,7 +111,8 @@ def train(args):
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # instantiate network and data loader
-    net = architectures.__dict__[args.arch](use_BG=args.approach == "Garbage",
+    net = architectures.__dict__[args.arch](small_scale=args.dataset == 'SmallScale',
+                                            use_BG=args.approach == "Garbage",
                                             final_layer_bias=False)
     net = tools.device(net)
     train_data_loader = torch.utils.data.DataLoader(
@@ -143,6 +150,10 @@ def train(args):
         b_idx = 1
         for x, y in train_data_loader:
             # print(f"\tepoch {epoch} - {b_idx} Batch Start! {time.time()}")
+            # print(x.shape, y.shape)
+            # if args.dataset == 'SmallScale' and 'ResNet' in args.arch:
+            #     x = x.expand(x.shape[0],3,*x.shape[2:]) # Expand the size of the input channel
+                # print(x.shape, y.shape)
             x = tools.device(x)
             y = tools.device(y)
             optimizer.zero_grad()

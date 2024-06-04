@@ -18,35 +18,41 @@ class EMNIST():
 
     """
     
-    def __init__(self, dataset_root):
+    def __init__(self, dataset_root, convert_to_rgb=False):
         self.dataset_root = dataset_root
+
+        data_transform = [transforms.ToTensor(), transpose]
+        if convert_to_rgb:
+            data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
+
         self.train_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
                         train=True,
                         download=False, 
                         split="mnist",
-                        transform=transforms.Compose([transforms.ToTensor(), transpose])
+                        transform=transforms.Compose(data_transform)
                     )
         self.test_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
                         train=False,
                         download=False,
                         split="mnist",
-                        transform=transforms.Compose([transforms.ToTensor(), transpose])
+                        # transform=transforms.Compose([transforms.ToTensor(), transpose])
+                        transform=transforms.Compose(data_transform)
                     )
         self.train_letters = torchvision.datasets.EMNIST(
                         root=dataset_root,
                         train=True,
                         download=False,
                         split='letters',
-                        transform=transforms.Compose([transforms.ToTensor(), transpose])
+                        transform=transforms.Compose(data_transform)
                     )
         self.test_letters = torchvision.datasets.EMNIST(
                         root=dataset_root,
                         train=False,
                         download=False,
                         split='letters',
-                        transform=transforms.Compose([transforms.ToTensor(), transpose])
+                        transform=transforms.Compose(data_transform)
                     )
         
     def get_train_set(self, split_ratio:float, include_negatives=False, has_background_class=False):
