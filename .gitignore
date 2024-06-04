@@ -1,7 +1,7 @@
 tmp*
 /tmp
 *.err
-*.sh
+# *.sh
 *.pyc
 **/**/__pycache__/.
 __pycache__
