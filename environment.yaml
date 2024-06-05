@@ -1,4 +1,4 @@
-name: eos-example
+name: os-multi-binary
 
 channels:
   - default
@@ -13,8 +13,9 @@ dependencies:
   - pytorch-cuda>=1.11.0
   - torchvision>=0.12.0
   - tqdm>=4.64.0
+  - scikit-learn>=1.4.2
   - pyyaml
   - pip
   - tensorboard
-  - pip:
-      - https://github.com/Vastlab/vast/archive/63-network-architectures-include-bias-neuron-in-the-last-layer.zip
+  # - pip:
+  #     - https://github.com/Vastlab/vast/archive/63-network-architectures-include-bias-neuron-in-the-last-layer.zip
