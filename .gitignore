@@ -5,3 +5,5 @@ tmp*
 *.pyc
 **/**/__pycache__/.
 __pycache__
+*.rst
+_scripts
