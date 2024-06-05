@@ -16,8 +16,9 @@ set_device_cpu()
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
-def load_network(args,which):
-    network_file = f"{args.arch}/{which}/{which}.model"
+def load_network(args,which,roots):
+    network_file = f"{roots}/{args.dataset}/{args.arch}/{which}/{which}.model"
+    # print(network_file)
     if os.path.exists(network_file):
         net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False)
         net.load_state_dict(torch.load(network_file))
@@ -37,7 +38,11 @@ def extract(dataset, net):
             logits.extend(logs.tolist())
             feats.extend(feat.tolist())
 
-    return numpy.array(gt), numpy.array(logits), numpy.array(feats)
+    gt = numpy.array(gt)
+    logits = numpy.array(logits)
+    feats = numpy.array(logits)
+    
+    return [gt, logits, feats]
 
 def find_ccr_at_fpr(FPR:numpy.array, CCR:numpy.array, ref_fpr:float):
     f = interp1d( FPR, CCR )
@@ -51,7 +56,7 @@ def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1
     kn_probs = test_probs[test_gt != unkn_gt_label]
     unkn_probs = test_probs[test_gt == unkn_gt_label]
     gt = test_gt[test_gt != unkn_gt_label]
-
+    # print(range(len(gt)), gt, kn_probs.shape)
     for tau in tqdm(sorted(kn_probs[range(len(gt)),gt])):
         # correct classification rate
         ccr.append(numpy.sum(numpy.logical_and(

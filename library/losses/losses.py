@@ -22,7 +22,15 @@ class multi_binary_loss:
         # Get balancing weights
         t_weights = torch.ones(self.num_of_classes) # TODO: Task-Balance
         s_weights = torch.ones(logit_values.shape[0]) # TODO: Class-Balance
-    
+        
+        # assign newly created tensor to gpu if cuda is available
+        if torch.cuda.is_available():
+            gpu = all_probs.get_device()
+            t_weights = t_weights.to(gpu)
+            s_weights = s_weights.to(gpu)
+        
+        # assert False, f"{all_target.get_device()}\t{all_probs.get_device()}\t{t_weights.get_device()}\t{s_weights.get_device()}"
+
         # Calculate Loss by each binary classifier
         for j in range(all_probs.shape[1]):
             probs = all_probs[:,j]
