@@ -16,8 +16,8 @@ set_device_cpu()
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
-def load_network(args,which,roots):
-    network_file = f"{roots}/{args.dataset}/{args.arch}/{which}/{which}.model"
+def load_network(args,which):
+    network_file = f"models/{args.dataset}/{args.arch}/{which}/{which}.model"
     # print(network_file)
     if os.path.exists(network_file):
         net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False)

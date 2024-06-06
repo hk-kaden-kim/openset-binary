@@ -14,9 +14,11 @@ def target_encoding(target, num_of_classes, init=0, kn_target=1):
         if t > -1:
             enc_t[t] = kn_target
         enc_target.append(enc_t)
-
-    return torch.Tensor(enc_target)
-
+        
+    if torch.cuda.is_available():
+        return torch.tensor(enc_target).to(torch.float).to(_device)
+    else:
+        return torch.tensor(enc_target).to(torch.float)
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
 # Date: 2024

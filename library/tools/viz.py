@@ -2,6 +2,8 @@ import os
 import numpy as np
 import itertools
 from matplotlib import pyplot as plt
+import torch
+from torch.nn import functional as F
 
 # Source for distinct colors https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
 colors_global = np.array(
@@ -32,7 +34,22 @@ colors_global = np.array(
 ).astype(np.float64)
 colors_global = colors_global / 255.0
 
+def get_probs(pnts, which, net, gpu=None):
 
+    pnts = torch.tensor(pnts).float()
+    # if gpu is not None and torch.cuda.is_available():
+    #     pnts = pnts.to(f"cuda:{gpu}")
+
+    result = net.deep_feature_forward(pnts)
+    if which == 'MultiBinary':
+        probs = F.sigmoid(result).detach()
+    else:
+        probs = F.softmax(result, dim=1).detach()
+    probs = torch.max(probs, dim=1).values
+    # if gpu is not None and torch.cuda.is_available():
+    #     probs = torch.max(probs, dim=1).values.cpu()
+    
+    return probs
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
@@ -82,12 +99,11 @@ def plot_histogram(
     plt.show()
 
 
-def get_probs(pnts, pred_weights):
-    e_ = np.exp(np.dot(pnts, pred_weights))
-    e_ = e_ / np.sum(e_, axis=1)[:, None]
-    res = np.max(e_, axis=1)
-    return res
-
+# def get_probs(pnts, pred_weights):
+#     e_ = np.exp(np.dot(pnts, pred_weights))
+#     e_ = e_ / np.sum(e_, axis=1)[:, None]
+#     res = np.max(e_, axis=1)
+#     return res
 
 def plotter_2D(
     pos_features,
@@ -132,7 +148,7 @@ def plotter_2D(
         # Remove black color from knowns
         colors = colors_global[:-1, :]
 
-    # TODO:The following code segment needs to be improved
+    # TODO: The following code segment needs to be improved
     colors_with_repetition = colors.tolist()
     for i in range(int(len(set(labels.tolist())) / colors.shape[0])):
         colors_with_repetition.extend(colors.tolist())
@@ -197,7 +213,7 @@ def sigmoid_2D_plotter(
     pos_labels="Knowns",
     neg_labels="Unknowns",
     title=None,
-    file_name="foo.pdf",
+    file_name="{}.{}",
     final=False,
     pred_weights=None,
     heat_map=False,
@@ -305,93 +321,93 @@ def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
     plt.show()
 
 
-def plot_3D(features, plane_cord, plane_activation, labels, output_file):
-    from plotly import graph_objects as go
+# def plot_3D(features, plane_cord, plane_activation, labels, output_file):
+#     from plotly import graph_objects as go
 
-    colors = (colors_global * 255).astype(np.int)
+#     colors = (colors_global * 255).astype(np.int)
 
-    fig = go.Figure()
-    for i, l in enumerate(list(set(labels.tolist()))):
-        color_string = f"{str(colors[i][0])},{str(colors[i][1])},{str(colors[i][2])}"
-        if l == -1:
-            color_string = "0,0,0"
-        fig.add_trace(
-            go.Scatter3d(
-                x=features[:, 0][labels == l],
-                y=features[:, 1][labels == l],
-                z=np.zeros(np.sum(labels == l)),
-                marker=dict(
-                    color=f"rgb({color_string})",
-                    size=3,
-                    showscale=False,
-                ),
-                mode="markers",
-                type="scatter3d",
-            )
-        )
-        if i < plane_activation.shape[1]:
-            fig.add_trace(
-                go.Surface(
-                    contours={
-                        "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-                        "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-                        "z": {
-                            "show": True,
-                            "start": -150,
-                            "end": 150,
-                            "size": 5.0,
-                            "color": f"rgba({color_string},1.0)",
-                        },
-                    },
-                    x=plane_cord[:, 0].tolist(),
-                    y=plane_cord[:, 1].tolist(),
-                    z=plane_activation[:, i].reshape(100, 100).tolist(),
-                    colorscale=[
-                        [0, f"rgba({color_string},1.)"],
-                        [1, f"rgba({color_string},1.)"],
-                    ],
-                    showscale=False,
-                    name=str(i) + " Plane",
-                    type="surface",
-                )
-            )
+#     fig = go.Figure()
+#     for i, l in enumerate(list(set(labels.tolist()))):
+#         color_string = f"{str(colors[i][0])},{str(colors[i][1])},{str(colors[i][2])}"
+#         if l == -1:
+#             color_string = "0,0,0"
+#         fig.add_trace(
+#             go.Scatter3d(
+#                 x=features[:, 0][labels == l],
+#                 y=features[:, 1][labels == l],
+#                 z=np.zeros(np.sum(labels == l)),
+#                 marker=dict(
+#                     color=f"rgb({color_string})",
+#                     size=3,
+#                     showscale=False,
+#                 ),
+#                 mode="markers",
+#                 type="scatter3d",
+#             )
+#         )
+#         if i < plane_activation.shape[1]:
+#             fig.add_trace(
+#                 go.Surface(
+#                     contours={
+#                         "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
+#                         "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
+#                         "z": {
+#                             "show": True,
+#                             "start": -150,
+#                             "end": 150,
+#                             "size": 5.0,
+#                             "color": f"rgba({color_string},1.0)",
+#                         },
+#                     },
+#                     x=plane_cord[:, 0].tolist(),
+#                     y=plane_cord[:, 1].tolist(),
+#                     z=plane_activation[:, i].reshape(100, 100).tolist(),
+#                     colorscale=[
+#                         [0, f"rgba({color_string},1.)"],
+#                         [1, f"rgba({color_string},1.)"],
+#                     ],
+#                     showscale=False,
+#                     name=str(i) + " Plane",
+#                     type="surface",
+#                 )
+#             )
 
-    """
-    Use this to draw an alpha plane if needed
-    alpha_plane_z_value = 20
-    fig.add_trace(go.Surface(contours={"x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
-                                       "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
-                                       "z": {"show": True, "start": -150, "end": 150, "size": 5.,
-                                             "color": f"rgba(0,0,0,1.0)"}},
-                             x=plane_cord[:, 0].tolist(),
-                             y=plane_cord[:, 1].tolist(),
-                             z=(np.ones((100, 100))*alpha_plane_z_value).tolist(),
-                             colorscale=[[0, f"rgba(0,0,0,1.)"], [1, f"rgba(0,0,0,1.)"]],
-                             showscale=False,
-                             name="Feature Plane",
-                             type="surface"))
-    """
+#     """
+#     Use this to draw an alpha plane if needed
+#     alpha_plane_z_value = 20
+#     fig.add_trace(go.Surface(contours={"x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
+#                                        "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
+#                                        "z": {"show": True, "start": -150, "end": 150, "size": 5.,
+#                                              "color": f"rgba(0,0,0,1.0)"}},
+#                              x=plane_cord[:, 0].tolist(),
+#                              y=plane_cord[:, 1].tolist(),
+#                              z=(np.ones((100, 100))*alpha_plane_z_value).tolist(),
+#                              colorscale=[[0, f"rgba(0,0,0,1.)"], [1, f"rgba(0,0,0,1.)"]],
+#                              showscale=False,
+#                              name="Feature Plane",
+#                              type="surface"))
+#     """
 
-    fig.add_trace(
-        go.Surface(
-            contours={
-                "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-                "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-                "z": {
-                    "show": True,
-                    "start": -150,
-                    "end": 150,
-                    "size": 5.0,
-                    "color": "rgba(128,128,128,1.0)",
-                },
-            },
-            x=plane_cord[:, 0].tolist(),
-            y=plane_cord[:, 1].tolist(),
-            z=np.zeros((100, 100)).tolist(),
-            colorscale=[[0, "rgba(128,128,128,1.)"], [1, "rgba(128,128,128,1.)"]],
-            showscale=False,
-            name="Feature Plane",
-            type="surface",
-        )
-    )
-    fig.write_html(output_file)
+#     fig.add_trace(
+#         go.Surface(
+#             contours={
+#                 "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
+#                 "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
+#                 "z": {
+#                     "show": True,
+#                     "start": -150,
+#                     "end": 150,
+#                     "size": 5.0,
+#                     "color": "rgba(128,128,128,1.0)",
+#                 },
+#             },
+#             x=plane_cord[:, 0].tolist(),
+#             y=plane_cord[:, 1].tolist(),
+#             z=np.zeros((100, 100)).tolist(),
+#             colorscale=[[0, "rgba(128,128,128,1.)"], [1, "rgba(128,128,128,1.)"]],
+#             showscale=False,
+#             name="Feature Plane",
+#             type="surface",
+#         )
+#     )
+#     fig.write_html(output_file)
