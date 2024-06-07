@@ -16,26 +16,29 @@ set_device_cpu()
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
-def load_network(args,which):
+def load_network(args,which, num_classes):
     network_file = os.path.join(args.model_root, f"{args.dataset}/{args.arch}/{which}/{which}.model")
     # print(network_file)
     if os.path.exists(network_file):
-        net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False)
+        net = architectures.__dict__[args.arch](small_scale=args.dataset == 'SmallScale',
+                                                use_BG=which=="Garbage",
+                                                num_classes=num_classes,
+                                                final_layer_bias=False)
         net.load_state_dict(torch.load(network_file))
         device(net)
         return net
     else:
         return None
 
-def extract(dataset, net):
+def extract(dataset, net, batch_size=2048):
     '''
     return : gt, logits, feats
     '''
     gt, logits, feats = [], [], []
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=2048, shuffle=False)
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
-        for (x, y) in data_loader:
+        for (x, y) in tqdm(data_loader):
             gt.extend(y.tolist())
             logs, feat = net(device(x))
             logits.extend(logs.tolist())
@@ -44,7 +47,7 @@ def extract(dataset, net):
     gt = numpy.array(gt)
     logits = numpy.array(logits)
     feats = numpy.array(feats)
-    
+    print('\tFinish!')
     return [gt, logits, feats]
 
 def find_ccr_at_fpr(FPR:numpy.array, CCR:numpy.array, ref_fpr:float):

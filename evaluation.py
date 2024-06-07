@@ -1,6 +1,3 @@
-# TODO: Check deep feature space visualization!
-# If it takes lots of time, just plot OSCR CURVE for ResNet18/50 EMNIST and ResNet18 ImageNet
-
 import torch
 from torch.nn import functional as F
 import numpy
@@ -46,6 +43,7 @@ def command_line_options():
     parser.add_argument("--model_root", "-mr", default ="/tmp", help="Select the directory where models are stored.")
     parser.add_argument("--protocol_root", "-pr", default ="/tmp", help="Select the directory where LargeScale Protocol are stored.")
     parser.add_argument("--protocol", "-p", default =1, help="Select the LargeScale Protocol.")
+    parser.add_argument('--batch_size', "-b", default =2048, help='Batch_Size', action="store", type=int)
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
@@ -118,11 +116,6 @@ def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, re
 
 def evaluate(args):
 
-    # networks
-    networks = {
-        which: evals.load_network(args, which) for which in args.approaches
-    }
-
     # load dataset
     if args.dataset == 'SmallScale':
         data = dataset.EMNIST(args.dataset_root, convert_to_rgb=args.dataset == 'SmallScale' and 'ResNet' in args.arch)
@@ -133,10 +126,9 @@ def evaluate(args):
     results = {}
     root = pathlib.Path(f"eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
-    for which, net in networks.items():
-        if net is None:
-            print('net is none')
-            continue
+    # for which, net in networks.items():
+    for which in args.approaches:
+
         print ("Evaluating", which)
         if args.arch == 'LeNet_plus_plus':
             results_dir = root.joinpath(which)
@@ -150,15 +142,31 @@ def evaluate(args):
         else:
             train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=False)
             test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
+
+        if args.dataset == 'SmallScale':
+            num_classes = 10
+        else:
+            if which != 'Garbage':
+                num_classes = train_set_neg.label_count - 1
+            else:
+                num_classes = train_set_neg.label_count
         
+        net = evals.load_network(args, which, num_classes)
+
+        if net is None:
+            print('net is none')
+            continue
 
         #################################################################
         print('----- Prediction')
         #################################################################
         pred_results = {'train':None, 'test_neg':None, 'test_unkn':None, 'test_all':None}
-        pred_results['train'] = evals.extract(train_set_neg, net)
-        pred_results['test_neg'] = evals.extract(test_set_neg, net)
-        pred_results['test_unkn'] = evals.extract(test_set_unkn, net)
+        print("Train Extract")
+        pred_results['train'] = evals.extract(train_set_neg, net, args.batch_size)
+        print("Test Neg Extract")
+        pred_results['test_neg'] = evals.extract(test_set_neg, net,  args.batch_size)
+        print("Test Unknown Extract")
+        pred_results['test_unkn'] = evals.extract(test_set_unkn, net,  args.batch_size)
 
         # Calculate Probs
         if which == "MultiBinary":
@@ -206,7 +214,7 @@ def evaluate(args):
         results[which] = (ccr, fpr_neg, fpr_unkn)
 
     ################################################
-    # OSCR Plots
+    print('----- Plot OSCR')
     ################################################
     try:
         # plot with known unknowns (letters 1:13)
