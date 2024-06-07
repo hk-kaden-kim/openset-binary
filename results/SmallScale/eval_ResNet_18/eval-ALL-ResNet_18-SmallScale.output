@@ -1,0 +1,36 @@
+Evaluating SoftMax
+----- Prediction
+----- Deep Feature Plotting
+----- Get OSCR
+Test set : Positives + Negatives
+Test set : Positives + Unknowns
+
+Evaluating Garbage
+----- Prediction
+----- Deep Feature Plotting
+----- Get OSCR
+Test set : Positives + Negatives
+Test set : Positives + Unknowns
+
+Evaluating EOS
+----- Prediction
+----- Deep Feature Plotting
+----- Get OSCR
+Test set : Positives + Negatives
+Test set : Positives + Unknowns
+
+Evaluating Objectosphere
+----- Prediction
+----- Deep Feature Plotting
+----- Get OSCR
+Test set : Positives + Negatives
+Test set : Positives + Unknowns
+
+Evaluating MultiBinary
+----- Prediction
+----- Deep Feature Plotting
+----- Get OSCR
+Test set : Positives + Negatives
+Test set : Positives + Unknowns
+
+Done!
