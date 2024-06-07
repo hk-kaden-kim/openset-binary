@@ -40,7 +40,7 @@ def command_line_options():
     )
 
     parser.add_argument("--approaches", "-a", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
-    parser.add_argument("--arch", '-ar', default='LeNet_plus_plus', choices=['LeNet_plus_plus'])
+    parser.add_argument("--arch", '-ar', default='LeNet_plus_plus', choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
     parser.add_argument("--dataset", "-dt", default ="SmallScale", help="Choose the scale of training dataset.")
     parser.add_argument("--dataset_root", "-rt", default ="/tmp", help="Select the directory where datasets are stored.")
     parser.add_argument("--model_root", "-mr", default ="/tmp", help="Select the directory where models are stored.")
@@ -50,62 +50,86 @@ def command_line_options():
 
     return parser.parse_args()
 
-def deep_features_plot(which, net, results_dir:pathlib.Path, unkn_gt_label, pred_results, get_probs_fn):
-
+def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, results_dir:pathlib.Path):
+    
     train_gt, _, train_feats, _ = pred_results['train']
     test_neg_gt, _, test_neg_feats, _ = pred_results['test_neg']
     test_unkn_gt, _, test_unkn_feats, _ = pred_results['test_unkn']
 
-    data = train_feats[train_gt != unkn_gt_label]
-    data_labels = train_gt[train_gt != unkn_gt_label]
-    neg_features = train_feats[train_gt == unkn_gt_label]
+    #################################################################
+    # Deep Feature Plotting : Training Samples
+    #################################################################
+    known_tag = train_gt != unkn_gt_label
+    unknown_tag = ~known_tag
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=None,
-                         final=True, heat_map=False, file_name=str(results_dir)+'/1_train_{}.{}')
+    pos_features = train_feats[known_tag]
+    labels = train_gt[known_tag]
+    neg_features = train_feats[unknown_tag]
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=None,
-                         final=True, heat_map=True, file_name=str(results_dir)+'/2_train_{}_heat.{}',
-                         prob_function=get_probs_fn, which=which, net=net, gpu=args.gpu)
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/1_{}_train.{}')
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=neg_features,
-                         final=True, heat_map=False, file_name=str(results_dir)+'/3_train_{}_neg.{}')
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=True, 
+                         final=True, file_name=str(results_dir)+'/2_{}_heat_train.{}',
+                         prob_function=get_probs_fn, which=which, net=net, gpu=tools.get_device())
 
-    data = test_neg_feats[test_neg_gt != unkn_gt_label]
-    data_labels = test_neg_gt[test_neg_gt != unkn_gt_label]
-    neg_features = test_neg_feats[test_neg_gt == unkn_gt_label]
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=None,
-                         final=True, heat_map=False, file_name=str(results_dir)+'/1_test_{}.{}')
+    #################################################################
+    # Deep Feature Plotting : Testing Samples (+ Negatives)
+    #################################################################
+    known_tag = test_neg_gt != unkn_gt_label
+    unknown_tag = ~known_tag
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=None,
-                         final=True, heat_map=True, file_name=str(results_dir)+'/2_test_{}_heat.{}',
-                         prob_function=get_probs_fn, which=which, net=net, gpu=args.gpu)
+    pos_features = test_neg_feats[known_tag]
+    labels = test_neg_gt[known_tag]
+    neg_features = test_neg_feats[unknown_tag]
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=neg_features,
-                         final=True, heat_map=False, file_name=str(results_dir)+'/3_test_{}_neg.{}'),
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/1_{}_test.{}')
 
-    data = test_unkn_feats[test_unkn_gt != unkn_gt_label]
-    data_labels = test_unkn_gt[test_unkn_gt != unkn_gt_label]
-    neg_features = test_unkn_feats[test_unkn_gt == unkn_gt_label]
+    tools.viz.plotter_2D(pos_features, labels,
+                         neg_features=None, heat_map=True, 
+                         final=True, file_name=str(results_dir)+'/2_{}_heat_test.{}',
+                         prob_function=get_probs_fn, which=which, net=net, gpu=tools.get_device())
 
-    tools.viz.plotter_2D(data, data_labels, neg_features=neg_features,
-                         final=True, heat_map=False, file_name=str(results_dir)+'/3_test_{}_unkn.{}', gpu=args.gpu)
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_test_neg.{}'),
 
+    #################################################################
+    # Deep Feature Plotting : Testing Samples (+ Unknowns)
+    #################################################################
+    known_tag = test_unkn_gt != unkn_gt_label
+    unknown_tag = ~known_tag
+
+    pos_features = test_unkn_feats[known_tag]
+    labels = test_unkn_gt[known_tag]
+    neg_features = test_unkn_feats[unknown_tag]
+
+    tools.viz.plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_test_unkn.{}')
 
 def evaluate(args):
 
     # networks
     networks = {
-        which: evals.load_network(args, which, args.model_root) for which in args.approaches
+        which: evals.load_network(args, which) for which in args.approaches
     }
 
     # load dataset
     if args.dataset == 'SmallScale':
-        data = dataset.EMNIST(args.dataset_root)
+        data = dataset.EMNIST(args.dataset_root, convert_to_rgb=args.dataset == 'SmallScale' and 'ResNet' in args.arch)
     else:
         data = dataset.IMAGENET(args.dataset_root, args.protocol_root, args.protocol)
 
-    # Save or Plot results of the prediction
+    # Save or Plot results
     results = {}
     root = pathlib.Path(f"eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
@@ -114,32 +138,30 @@ def evaluate(args):
             print('net is none')
             continue
         print ("Evaluating", which)
-        results_dir = root.joinpath(which)
-        results_dir.mkdir(parents=True, exist_ok=True)
+        if args.arch == 'LeNet_plus_plus':
+            results_dir = root.joinpath(which)
+            results_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            results_dir = None
 
-        if which == 'SoftMax':
-            train_set, val_set = data.get_train_set(split_ratio=0.8, include_negatives=True, has_background_class=False)
-            test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
-        elif which == 'Garbage':
-            train_set, val_set = data.get_train_set(split_ratio=0.8, include_negatives=True, has_background_class=True)
+        if which == 'Garbage':
+            train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=True)
             test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=True)
         else:
-            train_set, val_set = data.get_train_set(split_ratio=0.8, include_negatives=True, has_background_class=False)
+            train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=False)
             test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
-        # print(train_set.datasets[0].dataset.targets)
-        # print(torch.unique(train_set.datasets[0].dataset.targets))
-        ################################################
-        # Prediction
-        ################################################
+        
+
+        #################################################################
+        print('----- Prediction')
+        #################################################################
         pred_results = {'train':None, 'test_neg':None, 'test_unkn':None, 'test_all':None}
-        pred_results['train'] = evals.extract(train_set, net)
+        pred_results['train'] = evals.extract(train_set_neg, net)
         pred_results['test_neg'] = evals.extract(test_set_neg, net)
         pred_results['test_unkn'] = evals.extract(test_set_unkn, net)
-        # print(numpy.unique(pred_results['test_neg'][0]))
-        # assert False
 
         # Calculate Probs
-        if args.approaches == "MultiBinary":
+        if which == "MultiBinary":
             train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
             test_neg_probs = F.sigmoid(torch.tensor(pred_results['test_neg'][1])).detach().numpy()
             test_unkn_probs  = F.sigmoid(torch.tensor(pred_results['test_unkn'][1])).detach().numpy()
@@ -149,7 +171,7 @@ def evaluate(args):
             test_unkn_probs  = F.softmax(torch.tensor(pred_results['test_unkn'][1]), dim=1).detach().numpy()
 
         # remove the labels for the unknown class in case of Garbage Class
-        if args.approaches == "Garbage":
+        if which == "Garbage":
             test_neg_probs = test_neg_probs[:,:-1]
             test_unkn_probs = test_unkn_probs[:,:-1]
             unkn_gt_label = 10  # Change the lable of unkn gt
@@ -160,24 +182,27 @@ def evaluate(args):
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
-        ################################################
-        # Deep Feature Plots
-        ################################################
         if args.arch == 'LeNet_plus_plus':
-            deep_features_plot(which, net, results_dir, unkn_gt_label, pred_results, tools.viz.get_probs)
+            #################################################################
+            print('----- Deep Feature Plotting')
+            #################################################################
+            deep_features_plot(which, net, 
+                               results_dir=results_dir, 
+                               unkn_gt_label=unkn_gt_label, 
+                               pred_results=pred_results, 
+                               get_probs_fn=tools.viz.get_probs)
 
-        ################################################
-        # Get OSCR
-        ################################################
-        # get ccr and fpr by varying a threshold
+
+        #################################################################
+        print('----- Get OSCR')
+        #################################################################
         print("Test set : Positives + Negatives")
         ccr, fpr_neg = evals.get_oscr_curve(pred_results['test_neg'][0], pred_results['test_neg'][3]
-                                            , unkn_gt_label)
+                                            , unkn_gt_label, at_fpr=None)
         print("Test set : Positives + Unknowns")
         _, fpr_unkn = evals.get_oscr_curve(pred_results['test_unkn'][0], pred_results['test_unkn'][3]
-                                           , unkn_gt_label)
+                                           , unkn_gt_label,  at_fpr=None)
         print()
-        
         results[which] = (ccr, fpr_neg, fpr_unkn)
 
     ################################################
@@ -185,10 +210,10 @@ def evaluate(args):
     ################################################
     try:
         # plot with known unknowns (letters 1:13)
-        pyplot.figure()
+        pyplot.figure(figsize=(10,5))
         for which, res in results.items():
             pyplot.semilogx(res[1], res[0], label=labels[which])
-        pyplot.legend()
+        pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         pyplot.xlabel("False Positive Rate")
         pyplot.ylabel("Correct Classification Rate")
         pyplot.title("Negative Set")
@@ -197,10 +222,10 @@ def evaluate(args):
         # pdf.savefig(bbox_inches='tight', pad_inches=0)
         
         # plot with unknown unknowns (letters 14:26)
-        pyplot.figure()
+        pyplot.figure(figsize=(10,5))
         for which, res in results.items():
             pyplot.semilogx(res[2], res[0], label=labels[which])
-        pyplot.legend()
+        pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
         pyplot.xlabel("False Positive Rate")
         pyplot.ylabel("Correct Classification Rate")
         pyplot.title("Unknown Set")

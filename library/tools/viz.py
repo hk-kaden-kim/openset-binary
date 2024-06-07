@@ -37,8 +37,8 @@ colors_global = colors_global / 255.0
 def get_probs(pnts, which, net, gpu=None):
 
     pnts = torch.tensor(pnts).float()
-    # if gpu is not None and torch.cuda.is_available():
-    #     pnts = pnts.to(f"cuda:{gpu}")
+    if gpu is not None and torch.cuda.is_available():
+        pnts = pnts.to(f'{gpu}')
 
     result = net.deep_feature_forward(pnts)
     if which == 'MultiBinary':
@@ -46,8 +46,9 @@ def get_probs(pnts, which, net, gpu=None):
     else:
         probs = F.softmax(result, dim=1).detach()
     probs = torch.max(probs, dim=1).values
-    # if gpu is not None and torch.cuda.is_available():
-    #     probs = torch.max(probs, dim=1).values.cpu()
+
+    if gpu is not None and torch.cuda.is_available():
+        probs = probs.cpu()
     
     return probs
 
@@ -97,13 +98,6 @@ def plot_histogram(
     if file_name:
         plt.savefig(file_name.format("Hist", "pdf"), bbox_inches="tight")
     plt.show()
-
-
-# def get_probs(pnts, pred_weights):
-#     e_ = np.exp(np.dot(pnts, pred_weights))
-#     e_ = e_ / np.sum(e_, axis=1)[:, None]
-#     res = np.max(e_, axis=1)
-#     return res
 
 def plotter_2D(
     pos_features,
@@ -205,6 +199,7 @@ def plotter_2D(
             file_name=file_name.format("hist", "pdf"),
         )
 
+    plt.close()
 
 def sigmoid_2D_plotter(
     pos_features,

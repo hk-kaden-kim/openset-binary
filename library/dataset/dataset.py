@@ -62,15 +62,15 @@ class EMNIST():
                         transform=transforms.Compose(data_transform)
                     )
         
-    def get_train_set(self, split_ratio:float, include_negatives=False, has_background_class=False):
+    def get_train_set(self, split_ratio=0.8, include_negatives=False, has_background_class=False):
 
         mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
-        tr_mnist_idxs, val_mnist_idxs = train_test_split(mnist_idxs, train_size=split_ratio)
+        tr_mnist_idxs, val_mnist_idxs = train_test_split(mnist_idxs, train_size=split_ratio, random_state=42)
         tr_mnist, val_mnist = Subset(self.train_mnist, tr_mnist_idxs), Subset(self.train_mnist, val_mnist_idxs)
 
         letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
-        tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=split_ratio)
+        tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=split_ratio, random_state=42)
         tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
         tr_letters, val_letters = UnknownDataset(tr_letters,has_background_class), UnknownDataset(val_letters,has_background_class)
 
@@ -146,7 +146,7 @@ class IMAGENET():
         if not self.test_file.exists():
             raise FileNotFoundError(f"ImageNet Train Protocol is not exist at {self.test_file}")
 
-    def get_train_set(self, split_ratio:float, include_negatives=False, has_background_class=False):
+    def get_train_set(self, split_ratio=0.8, include_negatives=False, has_background_class=False):
 
         train_ds = ImagenetDataset(
                 csv_file=self.train_file,

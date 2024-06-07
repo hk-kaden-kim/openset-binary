@@ -3,6 +3,9 @@ from .viz import *
  
 _device = None
 
+def get_device():
+    return _device
+
 def target_encoding(target, num_of_classes, init=0, kn_target=1):
 
     import torch

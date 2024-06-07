@@ -17,7 +17,7 @@ set_device_cpu()
 ########################################################################
 
 def load_network(args,which):
-    network_file = f"models/{args.dataset}/{args.arch}/{which}/{which}.model"
+    network_file = os.path.join(args.model_root, f"{args.dataset}/{args.arch}/{which}/{which}.model")
     # print(network_file)
     if os.path.exists(network_file):
         net = architectures.__dict__[args.arch](use_BG=which=="Garbage",final_layer_bias=False)
@@ -28,6 +28,9 @@ def load_network(args,which):
         return None
 
 def extract(dataset, net):
+    '''
+    return : gt, logits, feats
+    '''
     gt, logits, feats = [], [], []
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=2048, shuffle=False)
 
@@ -40,7 +43,7 @@ def extract(dataset, net):
 
     gt = numpy.array(gt)
     logits = numpy.array(logits)
-    feats = numpy.array(logits)
+    feats = numpy.array(feats)
     
     return [gt, logits, feats]
 
@@ -66,8 +69,8 @@ def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1
         # false positive rate for validation and test set
         fpr.append(numpy.sum(numpy.max(unkn_probs, axis=1) >= tau) / len(unkn_probs))
 
-    at_fpr = 0.01
-    print(f"CCR@FPR{at_fpr} : {find_ccr_at_fpr(numpy.array(fpr),numpy.array(ccr),at_fpr)}")
+    if at_fpr is not None:
+        print(f"CCR@FPR{at_fpr} : {find_ccr_at_fpr(numpy.array(fpr),numpy.array(ccr),at_fpr)}")
 
     return (ccr, fpr)
 
