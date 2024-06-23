@@ -73,9 +73,28 @@ def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1
         fpr.append(numpy.sum(numpy.max(unkn_probs, axis=1) >= tau) / len(unkn_probs))
 
     if at_fpr is not None:
-        print(f"CCR@FPR{at_fpr} : {find_ccr_at_fpr(numpy.array(fpr),numpy.array(ccr),at_fpr)}")
+        print(f"\tCCR@FPR{at_fpr} : {find_ccr_at_fpr(numpy.array(fpr),numpy.array(ccr),at_fpr)}")
 
     return (ccr, fpr)
+
+def eval_pred_save(pred_results:dict, root:str):
+
+    if not os.path.exists(root):
+        os.makedirs(root)
+        print(f"\tFolder '{root}' created successfully.")
+
+    # Save the dictionary keys
+    keys_list = list(pred_results.keys())
+    keys_array = numpy.array(keys_list)
+    numpy.save(os.path.join(root,'keys.npy'), keys_array)
+
+    # Save each NumPy array in the values
+    for key, value in pred_results.items():
+        # print(key)
+        if value:
+            for i, arr in enumerate(value):
+                # print(arr.shape)
+                numpy.save(os.path.join(root, f'{key}_{i}.npy'), arr)
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS

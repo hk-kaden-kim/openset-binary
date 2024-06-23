@@ -44,6 +44,7 @@ def command_line_options():
     parser.add_argument("--protocol_root", "-pr", default ="/tmp", help="Select the directory where LargeScale Protocol are stored.")
     parser.add_argument("--protocol", "-p", default =1, help="Select the LargeScale Protocol.")
     parser.add_argument('--batch_size', "-b", default =2048, help='Batch_Size', action="store", type=int)
+    parser.add_argument('--pred_save', "-sp", default =0, help='Save predictions npy if the value is 1')
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
@@ -189,6 +190,9 @@ def evaluate(args):
         pred_results['train'].append(train_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
+
+        if args.pred_save:
+            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'))
 
         if args.arch == 'LeNet_plus_plus':
             #################################################################
