@@ -16,7 +16,7 @@ set_device_cpu()
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
-def load_network(args,which, num_classes):
+def load_network(args, which, num_classes):
     network_file = os.path.join(args.model_root, f"{args.dataset}/{args.arch}/{which}/{which}.model")
     # print(network_file)
     if os.path.exists(network_file):
@@ -38,7 +38,7 @@ def extract(dataset, net, batch_size=2048):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
-        for (x, y) in tqdm(data_loader):
+        for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600):
             gt.extend(y.tolist())
             logs, feat = net(device(x))
             logits.extend(logs.tolist())
@@ -63,7 +63,7 @@ def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1
     unkn_probs = test_probs[test_gt == unkn_gt_label]
     gt = test_gt[test_gt != unkn_gt_label]
     # print(range(len(gt)), gt, kn_probs.shape)
-    for tau in tqdm(sorted(kn_probs[range(len(gt)),gt])):
+    for tau in tqdm(sorted(kn_probs[range(len(gt)),gt]), miniters=int(len(gt)/5), maxinterval=600):
         # correct classification rate
         ccr.append(numpy.sum(numpy.logical_and(
             numpy.argmax(kn_probs, axis=1) == gt,
@@ -77,7 +77,7 @@ def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1
 
     return (ccr, fpr)
 
-def eval_pred_save(pred_results:dict, root:str):
+def eval_pred_save(pred_results:dict, root:str, save_feats=True):
 
     if not os.path.exists(root):
         os.makedirs(root)
@@ -89,12 +89,13 @@ def eval_pred_save(pred_results:dict, root:str):
     numpy.save(os.path.join(root,'keys.npy'), keys_array)
 
     # Save each NumPy array in the values
+    pred_name = ['gt', 'logits', 'feats', 'probs']
     for key, value in pred_results.items():
-        # print(key)
         if value:
             for i, arr in enumerate(value):
-                # print(arr.shape)
-                numpy.save(os.path.join(root, f'{key}_{i}.npy'), arr)
+                if not save_feats and i == 2:
+                    continue
+                numpy.save(os.path.join(root, f'{key}_{pred_name[i]}.npy'), arr)
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS

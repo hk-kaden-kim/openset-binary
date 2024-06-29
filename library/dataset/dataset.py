@@ -72,7 +72,7 @@ class EMNIST():
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
         tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=split_ratio, random_state=42)
         tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
-        tr_letters, val_letters = UnknownDataset(tr_letters,has_background_class), UnknownDataset(val_letters,has_background_class)
+        tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
 
         if include_negatives:
             train_emnist, val_emnist = ConcatDataset([tr_mnist, tr_letters]), ConcatDataset([val_mnist, val_letters])
@@ -89,12 +89,12 @@ class EMNIST():
         letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
         letters_idxs = [i for i, t in enumerate(self.test_letters.targets) if t in letters_targets]
         test_neg_letters = Subset(self.test_letters, letters_idxs)
-        test_neg_letters = UnknownDataset(test_neg_letters,has_background_class)
+        test_neg_letters = EmnistUnknownDataset(test_neg_letters,has_background_class)
 
         letters_targets = [16,17,18,19,20,21,22,23,24,25,26]
         letters_idxs = [i for i, t in enumerate(self.test_letters.targets) if t in letters_targets]
         test_unkn_letters = Subset(self.test_letters, letters_idxs)
-        test_unkn_letters = UnknownDataset(test_unkn_letters,has_background_class)
+        test_unkn_letters = EmnistUnknownDataset(test_unkn_letters,has_background_class)
 
         test_kn_neg = ConcatDataset([test_mnist, test_neg_letters])
         test_kn_unkn = ConcatDataset([test_mnist, test_unkn_letters])
@@ -102,7 +102,7 @@ class EMNIST():
 
         return test_all, test_kn_neg, test_kn_unkn
 
-class UnknownDataset(torch.utils.data.dataset.Subset):
+class EmnistUnknownDataset(torch.utils.data.dataset.Subset):
 
     def __init__(self, subset, has_background_class):
         self.dataset = subset.dataset
@@ -176,10 +176,43 @@ class IMAGENET():
                 imagenet_path=self.dataset_root,
                 transform=self.val_data_transform
             )   
+
+        test_neg_dataset = ImagenetDataset(
+                csv_file=self.test_file,
+                imagenet_path=self.dataset_root,
+                transform=self.val_data_transform
+            )   
+
+        test_unkn_dataset = ImagenetDataset(
+                csv_file=self.test_file,
+                imagenet_path=self.dataset_root,
+                transform=self.val_data_transform
+            )   
         
-        return test_dataset, None, None
+        if has_background_class:
+            test_dataset.replace_negative_label()
+            test_dataset.replace_unknown_label()
+            
+            test_neg_dataset.replace_negative_label()
+            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] >= 0]
+
+            test_unkn_dataset.replace_unknown_label()
+            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] >= 0]
+
+        else:
+            test_dataset.dataset[1] = test_dataset.dataset[1].replace(-2, -1)
+
+            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] > -2]
+
+            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] != -1]
+            test_unkn_dataset.dataset[1] = test_unkn_dataset.dataset[1].replace(-2, -1)
+        
+        return test_dataset, test_neg_dataset, test_unkn_dataset
+
 
 ########################################################################
+# Reference
+# 
 # Author: UZH AIML Group
 # Date: 2024
 # Availability: https://github.com/AIML-IfI/openset-imagenet
@@ -201,7 +234,7 @@ class ImagenetDataset(torch.utils.data.dataset.Dataset):
         self.dataset = pd.read_csv(csv_file, header=None)
         self.imagenet_path = Path(imagenet_path)
         self.transform = transform
-        self.label_count = len(self.dataset[1].unique())
+        self.label_count = len(self.dataset[self.dataset[1]>=0][1].unique())
         self.unique_classes = np.sort(self.dataset[1].unique())
 
     def __len__(self):
@@ -235,15 +268,27 @@ class ImagenetDataset(torch.utils.data.dataset.Dataset):
         """ Returns true if the dataset contains negative samples."""
         return -1 in self.unique_classes
 
-    def replace_negative_label(self):
+    def replace_negative_label(self, update_label_cnt=False):
         """ Replaces negative label (-1) to biggest_label + 1. This is required if the loss function
         is BGsoftmax. Updates the array of unique labels.
         """
-        # get the biggest label, which is the number of classes - 1 (since we have the -1 label inside)
-        biggest_label = self.label_count - 1
+        biggest_label = self.label_count
         self.dataset[1] = self.dataset[1].replace(-1, biggest_label)
         self.unique_classes[self.unique_classes == -1] = biggest_label
         self.unique_classes.sort()
+        if update_label_cnt:
+            self.label_count += 1
+
+    def replace_unknown_label(self, update_label_cnt=False):
+        """ Replaces negative label (-2) to biggest_label + 1. This is required if the loss function
+        is BGsoftmax. Updates the array of unique labels.
+        """
+        biggest_label = self.label_count
+        self.dataset[1] = self.dataset[1].replace(-2, biggest_label)
+        self.unique_classes[self.unique_classes == -1] = biggest_label
+        self.unique_classes.sort()
+        if update_label_cnt:
+            self.label_count += 1
 
     def remove_negative_label(self):
         """ Removes all negative labels (<0) from the dataset. This is required for training with plain softmax"""

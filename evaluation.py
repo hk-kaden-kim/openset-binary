@@ -125,17 +125,14 @@ def evaluate(args):
 
     # Save or Plot results
     results = {}
-    root = pathlib.Path(f"eval_{args.arch}")
+    root = pathlib.Path(f"{args.dataset}/eval_{args.arch}") # FIXME: return back to originial 'withoug _'
     root.mkdir(parents=True, exist_ok=True)
     # for which, net in networks.items():
     for which in args.approaches:
 
         print ("Evaluating", which)
-        if args.arch == 'LeNet_plus_plus':
-            results_dir = root.joinpath(which)
-            results_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            results_dir = None
+        results_dir = root.joinpath(which)
+        results_dir.mkdir(parents=True, exist_ok=True)
 
         if which == 'Garbage':
             train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=True)
@@ -146,13 +143,13 @@ def evaluate(args):
 
         if args.dataset == 'SmallScale':
             num_classes = 10
+            # if which == 'Garbage':
+            #     num_classes = 11
         else:
-            if which != 'Garbage':
-                num_classes = train_set_neg.label_count - 1
-            else:
-                num_classes = train_set_neg.label_count
-        
+            num_classes = train_set_neg.label_count
+        # print(f"Flag! {num_classes}")
         net = evals.load_network(args, which, num_classes)
+        # continue
 
         if net is None:
             print('net is none')
@@ -183,16 +180,19 @@ def evaluate(args):
         if which == "Garbage":
             test_neg_probs = test_neg_probs[:,:-1]
             test_unkn_probs = test_unkn_probs[:,:-1]
-            unkn_gt_label = 10  # Change the lable of unkn gt
+
+        # Set the label values of negatives/unknown
+        if which == "Garbage":
+            unkn_gt_label = num_classes
         else:
             unkn_gt_label = -1
-
+        
         pred_results['train'].append(train_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
         if args.pred_save:
-            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'))
+            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = args.arch == 'LeNet_plus_plus')
 
         if args.arch == 'LeNet_plus_plus':
             #################################################################
@@ -208,6 +208,7 @@ def evaluate(args):
         #################################################################
         print('----- Get OSCR')
         #################################################################
+
         print("Test set : Positives + Negatives")
         ccr, fpr_neg = evals.get_oscr_curve(pred_results['test_neg'][0], pred_results['test_neg'][3]
                                             , unkn_gt_label, at_fpr=None)

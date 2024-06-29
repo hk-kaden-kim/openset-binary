@@ -8,31 +8,20 @@ from torch.nn import functional as F
 # Source for distinct colors https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
 colors_global = np.array(
     [
-        [230, 25, 75],
-        [60, 180, 75],
-        [255, 225, 25],
-        [67, 99, 216],
-        [245, 130, 49],
-        [145, 30, 180],
-        [70, 240, 240],
-        [240, 50, 230],
-        [188, 246, 12],
-        [250, 190, 190],
-        [0, 128, 128],
-        [230, 190, 255],
-        [154, 99, 36],
-        [255, 250, 200],
-        [128, 0, 0],
-        [170, 255, 195],
-        [128, 128, 0],
-        [255, 216, 177],
-        [0, 0, 117],
-        [128, 128, 128],
-        [255, 255, 255],
-        [0, 0, 0],
+        '#1f77b4',
+        '#ff7f0e',
+        '#2ca02c',
+        '#d62728',
+        '#9467bd',
+        '#8c564b',
+        '#e377c2',
+        '#7f7f7f',
+        '#bcbd22',
+        '#17becf',
+        '#000000',
     ]
-).astype(np.float64)
-colors_global = colors_global / 255.0
+)
+# colors_global = colors_global / 255.0
 
 def get_probs(pnts, which, net, gpu=None):
 
@@ -118,8 +107,8 @@ def plotter_2D(
     if heat_map:
         min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
         min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-        x = np.linspace(min_x * 1.5, max_x * 1.5, 200)
-        y = np.linspace(min_y * 1.5, max_y * 1.5, 200)
+        x = np.linspace(min_x * 1.5, max_x * 1.5, 500)
+        y = np.linspace(min_y * 1.5, max_y * 1.5, 500)
         pnts = list(itertools.chain(itertools.product(x, y)))
         pnts = np.array(pnts)
 
@@ -128,8 +117,8 @@ def plotter_2D(
         heat_map = ax.pcolormesh(
             x,
             y,
-            np.array(res).reshape(200, 200).transpose(),
-            cmap='gray',
+            np.array(res).reshape(500, 500).transpose(),
+            # cmap='gray',
             rasterized=True,
             shading="auto",
             vmin=0.0,
@@ -140,9 +129,9 @@ def plotter_2D(
     colors = colors_global
     if neg_features is not None:
         # Remove black color from knowns
-        colors = colors_global[:-1, :]
+        colors = colors_global[:-1]
 
-    # TODO: The following code segment needs to be improved
+    # The following code segment needs to be improved
     colors_with_repetition = colors.tolist()
     for i in range(int(len(set(labels.tolist())) / colors.shape[0])):
         colors_with_repetition.extend(colors.tolist())
@@ -201,84 +190,84 @@ def plotter_2D(
 
     plt.close()
 
-def sigmoid_2D_plotter(
-    pos_features,
-    labels,
-    neg_features=None,
-    pos_labels="Knowns",
-    neg_labels="Unknowns",
-    title=None,
-    file_name="{}.{}",
-    final=False,
-    pred_weights=None,
-    heat_map=False,
-):
-    plt.figure(figsize=[6, 6])
+# def sigmoid_2D_plotter(
+#     pos_features,
+#     labels,
+#     neg_features=None,
+#     pos_labels="Knowns",
+#     neg_labels="Unknowns",
+#     title=None,
+#     file_name="{}.{}",
+#     final=False,
+#     pred_weights=None,
+#     heat_map=False,
+# ):
+#     plt.figure(figsize=[6, 6])
 
-    if heat_map:
-        min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
-        min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-        x = np.linspace(min_x * 1.5, max_x * 1.5, 200)
-        y = np.linspace(min_y * 1.5, max_y * 1.5, 200)
-        pnts = list(itertools.chain(itertools.product(x, y)))
-        pnts = np.array(pnts)
+#     if heat_map:
+#         min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
+#         min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
+#         x = np.linspace(min_x * 1.5, max_x * 1.5, 200)
+#         y = np.linspace(min_y * 1.5, max_y * 1.5, 200)
+#         pnts = list(itertools.chain(itertools.product(x, y)))
+#         pnts = np.array(pnts)
 
-        e_ = np.exp(np.dot(pnts, pred_weights))
-        e_ = e_ / np.sum(e_, axis=1)[:, None]
-        res = np.max(e_, axis=1)
+#         e_ = np.exp(np.dot(pnts, pred_weights))
+#         e_ = e_ / np.sum(e_, axis=1)[:, None]
+#         res = np.max(e_, axis=1)
 
-        plt.pcolor(x, y, np.array(res).reshape(200, 200).transpose(), rasterized=True)
+#         plt.pcolor(x, y, np.array(res).reshape(200, 200).transpose(), rasterized=True)
 
-    colors = colors_global
-    if neg_features is not None:
-        # Remove black color from knowns
-        colors = colors_global[:-1, :]
+#     colors = colors_global
+#     if neg_features is not None:
+#         # Remove black color from knowns
+#         colors = colors_global[:-1]
 
-    colors_with_repetition = colors.tolist()
-    for i in range(10):
-        plt.scatter(
-            pos_features[labels == i, 0],
-            pos_features[labels == i, 1],
-            c=colors_with_repetition[i],
-            edgecolors="none",
-            s=1.0 - (i / 10),
-        )
-    if neg_features is not None:
-        plt.scatter(
-            neg_features[:, 0],
-            neg_features[:, 1],
-            c="k",
-            edgecolors="none",
-            s=15,
-            marker="*",
-        )
-    if final:
-        plt.gca().spines["right"].set_position("zero")
-        plt.gca().spines["bottom"].set_position("zero")
-        plt.gca().spines["left"].set_visible(False)
-        plt.gca().spines["top"].set_visible(False)
-        plt.tick_params(
-            axis="both",
-            bottom=False,
-            left=False,
-            labelbottom=False,
-            labeltop=False,
-            labelleft=False,
-            labelright=False,
-        )
-        plt.axis("equal")
+#     colors_with_repetition = colors.tolist()
+#     for i in range(10):
+#         plt.scatter(
+#             pos_features[labels == i, 0],
+#             pos_features[labels == i, 1],
+#             c=colors_with_repetition[i],
+#             edgecolors="none",
+#             s=1.0 - (i / 10),
+#         )
+#     if neg_features is not None:
+#         plt.scatter(
+#             neg_features[:, 0],
+#             neg_features[:, 1],
+#             c="k",
+#             edgecolors="none",
+#             s=15,
+#             marker="*",
+#         )
+#     if final:
+#         plt.gca().spines["right"].set_position("zero")
+#         plt.gca().spines["bottom"].set_position("zero")
+#         plt.gca().spines["left"].set_visible(False)
+#         plt.gca().spines["top"].set_visible(False)
+#         plt.tick_params(
+#             axis="both",
+#             bottom=False,
+#             left=False,
+#             labelbottom=False,
+#             labeltop=False,
+#             labelleft=False,
+#             labelright=False,
+#         )
+#         plt.axis("equal")
 
-    plt.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
-    plt.show()
-    if neg_features is not None:
-        plot_histogram(
-            pos_features,
-            neg_features,
-            pos_labels=pos_labels,
-            neg_labels=neg_labels,
-            title=title,
-            file_name=file_name.format("hist", "pdf"),
-        )
+#     plt.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
+#     plt.show()
+#     if neg_features is not None:
+#         plot_histogram(
+#             pos_features,
+#             neg_features,
+#             pos_labels=pos_labels,
+#             neg_labels=neg_labels,
+#             title=title,
+#             file_name=file_name.format("hist", "pdf"),
+#         )
 
 
 def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
@@ -314,95 +303,3 @@ def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
             filename = f"{filename}.pdf"
         fig.savefig(f"{filename}", bbox_inches="tight")
     plt.show()
-
-
-# def plot_3D(features, plane_cord, plane_activation, labels, output_file):
-#     from plotly import graph_objects as go
-
-#     colors = (colors_global * 255).astype(np.int)
-
-#     fig = go.Figure()
-#     for i, l in enumerate(list(set(labels.tolist()))):
-#         color_string = f"{str(colors[i][0])},{str(colors[i][1])},{str(colors[i][2])}"
-#         if l == -1:
-#             color_string = "0,0,0"
-#         fig.add_trace(
-#             go.Scatter3d(
-#                 x=features[:, 0][labels == l],
-#                 y=features[:, 1][labels == l],
-#                 z=np.zeros(np.sum(labels == l)),
-#                 marker=dict(
-#                     color=f"rgb({color_string})",
-#                     size=3,
-#                     showscale=False,
-#                 ),
-#                 mode="markers",
-#                 type="scatter3d",
-#             )
-#         )
-#         if i < plane_activation.shape[1]:
-#             fig.add_trace(
-#                 go.Surface(
-#                     contours={
-#                         "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-#                         "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-#                         "z": {
-#                             "show": True,
-#                             "start": -150,
-#                             "end": 150,
-#                             "size": 5.0,
-#                             "color": f"rgba({color_string},1.0)",
-#                         },
-#                     },
-#                     x=plane_cord[:, 0].tolist(),
-#                     y=plane_cord[:, 1].tolist(),
-#                     z=plane_activation[:, i].reshape(100, 100).tolist(),
-#                     colorscale=[
-#                         [0, f"rgba({color_string},1.)"],
-#                         [1, f"rgba({color_string},1.)"],
-#                     ],
-#                     showscale=False,
-#                     name=str(i) + " Plane",
-#                     type="surface",
-#                 )
-#             )
-
-#     """
-#     Use this to draw an alpha plane if needed
-#     alpha_plane_z_value = 20
-#     fig.add_trace(go.Surface(contours={"x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
-#                                        "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.},
-#                                        "z": {"show": True, "start": -150, "end": 150, "size": 5.,
-#                                              "color": f"rgba(0,0,0,1.0)"}},
-#                              x=plane_cord[:, 0].tolist(),
-#                              y=plane_cord[:, 1].tolist(),
-#                              z=(np.ones((100, 100))*alpha_plane_z_value).tolist(),
-#                              colorscale=[[0, f"rgba(0,0,0,1.)"], [1, f"rgba(0,0,0,1.)"]],
-#                              showscale=False,
-#                              name="Feature Plane",
-#                              type="surface"))
-#     """
-
-#     fig.add_trace(
-#         go.Surface(
-#             contours={
-#                 "x": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-#                 "y": {"show": True, "start": -2.5, "end": 2.5, "size": 5.0},
-#                 "z": {
-#                     "show": True,
-#                     "start": -150,
-#                     "end": 150,
-#                     "size": 5.0,
-#                     "color": "rgba(128,128,128,1.0)",
-#                 },
-#             },
-#             x=plane_cord[:, 0].tolist(),
-#             y=plane_cord[:, 1].tolist(),
-#             z=np.zeros((100, 100)).tolist(),
-#             colorscale=[[0, "rgba(128,128,128,1.)"], [1, "rgba(128,128,128,1.)"]],
-#             showscale=False,
-#             name="Feature Plane",
-#             type="surface",
-#         )
-#     )
-#     fig.write_html(output_file)
