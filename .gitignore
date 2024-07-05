@@ -9,4 +9,5 @@ __pycache__
 *.rst
 _scripts
 _models
+_models_featdim_2
 _results
