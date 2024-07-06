@@ -1,0 +1,45 @@
+##########################################
+# Training Parameters
+##########################################
+seed: 42        # Common seed across all source of randomness
+batch_size: 
+  smallscale: 128 
+  largescale: 64
+epochs:
+  smallscale: 70
+  largescale: 120
+num_workers: 5      # Dataloader number of workers
+
+##########################################
+# Data Parameters
+##########################################
+data:
+  smallscale:
+    root: /local/scratch/hkim # EMNIST path
+    split_ratio: 0.8
+  largescale:
+    root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
+    protocol: ../../data/LargeScale # ImageNet Protocol root path
+    level: 3 # 1 2 3
+
+##########################################
+# Architecture Parameters
+##########################################
+arch:
+  force_fc_dim: -1 # Set the feature dimensionality on purpose. -1 : feature space dimension == num of classes
+
+##########################################
+# Loss Parameters
+##########################################
+loss:
+  eos:
+    unkn_weight: 1
+
+##########################################
+# Optimizer Parameters
+##########################################
+opt:
+  solver: adam  # Two options: {adam, sgd}
+  lr: 1.e-3   # Initial learning rate
+  decay: 0    # Number of epochs to wait for each learning rate reduction. 0 means no decay
+  gamma: 1    # Factor to reduce the learning rate

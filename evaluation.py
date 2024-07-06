@@ -2,6 +2,7 @@ import torch
 from torch.nn import functional as F
 import numpy
 import os
+import time 
 
 from library import architectures, tools, evals, dataset
 
@@ -22,7 +23,6 @@ labels={
   "SoftMax" : "Plain SoftMax",
   "Garbage" : "Garbage Class",
   "EOS" : "Entropic Open-Set",
-  "Objectosphere" : "Objectosphere",
   "MultiBinary" : "Multiple Binary Classifiers",
 }
 
@@ -31,33 +31,26 @@ def command_line_options():
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='This is the evaluation script for all MNIST experiments. \
-                    Where applicable roman letters are used as Known Unknowns. \
-                    During training model with best performance on validation set in the no_of_epochs is used.'
+        description='...TBD'
     )
 
-    parser.add_argument("--approaches", "-a", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
-    parser.add_argument("--arch", '-ar', default='LeNet_plus_plus', choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
-    parser.add_argument("--dataset", "-dt", default ="SmallScale", help="Choose the scale of training dataset.")
-    parser.add_argument("--dataset_root", "-rt", default ="/tmp", help="Select the directory where datasets are stored.")
-    parser.add_argument("--model_root", "-mr", default ="/tmp", help="Select the directory where models are stored.")
-    parser.add_argument("--protocol_root", "-pr", default ="/tmp", help="Select the directory where LargeScale Protocol are stored.")
-    parser.add_argument("--protocol", "-p", default =1, help="Select the LargeScale Protocol.")
-    parser.add_argument('--batch_size', "-b", default =2048, help='Batch_Size', action="store", type=int)
-    parser.add_argument('--pred_save', "-sp", default =0, help='Save predictions npy if the value is 1')
+    parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of evaluation dataset.")
+    parser.add_argument("--arch", "-ar", required=True, choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
+    parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
 
 def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, results_dir:pathlib.Path):
-    
+
+    print('Plot Deep Feature Space!')
     train_gt, _, train_feats, _ = pred_results['train']
     test_neg_gt, _, test_neg_feats, _ = pred_results['test_neg']
     test_unkn_gt, _, test_unkn_feats, _ = pred_results['test_unkn']
 
-    #################################################################
     # Deep Feature Plotting : Training Samples
-    #################################################################
+    print("Training Set...")
     known_tag = train_gt != unkn_gt_label
     unknown_tag = ~known_tag
 
@@ -77,10 +70,10 @@ def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, re
     tools.viz.plotter_2D(pos_features, labels, 
                          neg_features=neg_features, heat_map=False, 
                          final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
+    print("Done!")
 
-    #################################################################
     # Deep Feature Plotting : Testing Samples (+ Negatives)
-    #################################################################
+    print("Test Set with 'Known Unknown Samples'...")
     known_tag = test_neg_gt != unkn_gt_label
     unknown_tag = ~known_tag
 
@@ -100,10 +93,10 @@ def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, re
     tools.viz.plotter_2D(pos_features, labels, 
                          neg_features=neg_features, heat_map=False, 
                          final=True, file_name=str(results_dir)+'/3_{}_test_neg.{}'),
+    print("Done!")
 
-    #################################################################
     # Deep Feature Plotting : Testing Samples (+ Unknowns)
-    #################################################################
+    print("Test Set with 'Unknown Unknown Samples'...")
     known_tag = test_unkn_gt != unkn_gt_label
     unknown_tag = ~known_tag
 
@@ -115,56 +108,90 @@ def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, re
                          neg_features=neg_features, heat_map=False, 
                          final=True, file_name=str(results_dir)+'/3_{}_test_unkn.{}')
 
-def evaluate(args):
+    print("Done!\n")
+
+def evaluate(args, config):
 
     # load dataset
-    if args.dataset == 'SmallScale':
-        data = dataset.EMNIST(args.dataset_root, convert_to_rgb=args.dataset == 'SmallScale' and 'ResNet' in args.arch)
+    if args.scale == 'SmallScale':
+        data = dataset.EMNIST(config.data.smallscale.root,
+                              split_ratio = 0.8, seed = config.seed,
+                              convert_to_rgb=args.scale == 'SmallScale' and 'ResNet' in args.arch)
     else:
-        data = dataset.IMAGENET(args.dataset_root, args.protocol_root, args.protocol)
+        data = dataset.IMAGENET(config.data.largescale.root,
+                                protocol_root = config.data.largescale.protocol, 
+                                protocol = config.data.largescale.level)
 
     # Save or Plot results
     results = {}
-    root = pathlib.Path(f"{args.dataset}/eval_{args.arch}") # FIXME: return back to originial 'withoug _'
+    root = pathlib.Path(f"{args.scale}/eval_{args.arch}")
+    if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
+        root = pathlib.Path(f"{args.scale}/eval_{args.arch}_fc_dim_2")
     root.mkdir(parents=True, exist_ok=True)
-    # for which, net in networks.items():
-    for which in args.approaches:
 
-        print ("Evaluating", which)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(
+        f"Configuration Details \n"
+        f"Model Root: {config.arch.model_root}\n"
+        f"Save Predictions: {config.pred_save==1}\n"
+          )
+
+    for which in args.approach:
+
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print (f"Evaluation: {which}\n"
+               f"Execution Time: {time.strftime('%d %b %Y %H:%M:%S')}\n")
+
+        # Set the variables
         results_dir = root.joinpath(which)
         results_dir.mkdir(parents=True, exist_ok=True)
 
-        if which == 'Garbage':
-            train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=True)
-            test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=True)
-        else:
-            train_set_neg, _ = data.get_train_set(include_negatives=True, has_background_class=False)
-            test_set_all, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
-
-        if args.dataset == 'SmallScale':
-            num_classes = 10
-            # if which == 'Garbage':
-            #     num_classes = 11
-        else:
-            num_classes = train_set_neg.label_count
-        # print(f"Flag! {num_classes}")
-        net = evals.load_network(args, which, num_classes)
-        # continue
-
-        if net is None:
-            print('net is none')
-            continue
-
-        #################################################################
-        print('----- Prediction')
-        #################################################################
         pred_results = {'train':None, 'test_neg':None, 'test_unkn':None, 'test_all':None}
-        print("Train Extract")
-        pred_results['train'] = evals.extract(train_set_neg, net, args.batch_size)
-        print("Test Neg Extract")
-        pred_results['test_neg'] = evals.extract(test_set_neg, net,  args.batch_size)
-        print("Test Unknown Extract")
-        pred_results['test_unkn'] = evals.extract(test_set_unkn, net,  args.batch_size)
+
+        if args.scale == 'SmallScale':
+            batch_size = config.batch_size.smallscale
+        else:
+            batch_size = config.batch_size.largescale
+        print(f"Batch Size: {batch_size}\n"
+              f"Results: {results_dir}\n")
+
+        # Load evaluation dataset
+        if which == 'Garbage':
+            train_set_neg, _, num_classes = data.get_train_set(include_negatives=True, has_background_class=True)
+            _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=True)
+            unkn_gt_label = num_classes
+        else:
+            train_set_neg, _, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
+            _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
+            unkn_gt_label = -1
+        
+        # print("Evaluation Dataset Stats:")
+        # print("Training Set...")
+        # tools.dataset_stats(train_set_neg, batch_size, is_verbose=True)
+        # print("Test Set with 'Known Unknown Samples'...")
+        # tools.dataset_stats(test_set_neg, batch_size, is_verbose=True)
+        # print("Test Set with 'Unknown Unknown Samples'...")
+        # tools.dataset_stats(test_set_unkn, batch_size, is_verbose=True)
+        # print()
+        # assert False, f"FLAG!"
+
+        # Load weights of the model
+        net = evals.load_network(args, config, which, num_classes)
+        if net is None:
+            print(f"Weights are not loaded on the network!\n{which} Evaluation Terminated\n")
+            continue
+        
+        print("Execute predictions!")
+        print(f"{time.strftime('%H:%M:%S')} Training Set...")
+        pred_results['train'] = evals.extract(train_set_neg, net, batch_size, is_verbose=True)
+        print(f"{time.strftime('%H:%M:%S')} Done!")
+        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Known Unknown Samples'...")
+        pred_results['test_neg'] = evals.extract(test_set_neg, net,  batch_size, is_verbose=True)
+        print(f"{time.strftime('%H:%M:%S')} Done!")
+        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Unknown Unknown Samples'...")
+        pred_results['test_unkn'] = evals.extract(test_set_unkn, net, batch_size, is_verbose=True)
+        print(f"{time.strftime('%H:%M:%S')} Done!")
+        print()
 
         # Calculate Probs
         if which == "MultiBinary":
@@ -180,24 +207,15 @@ def evaluate(args):
         if which == "Garbage":
             test_neg_probs = test_neg_probs[:,:-1]
             test_unkn_probs = test_unkn_probs[:,:-1]
-
-        # Set the label values of negatives/unknown
-        if which == "Garbage":
-            unkn_gt_label = num_classes
-        else:
-            unkn_gt_label = -1
         
         pred_results['train'].append(train_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
-        if args.pred_save:
+        if config.pred_save:
             evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = args.arch == 'LeNet_plus_plus')
 
-        if args.arch == 'LeNet_plus_plus':
-            #################################################################
-            print('----- Deep Feature Plotting')
-            #################################################################
+        if config.arch.force_fc_dim == 2:
             deep_features_plot(which, net, 
                                results_dir=results_dir, 
                                unkn_gt_label=unkn_gt_label, 
@@ -205,22 +223,19 @@ def evaluate(args):
                                get_probs_fn=tools.viz.get_probs)
 
 
-        #################################################################
-        print('----- Get OSCR')
-        #################################################################
-
-        print("Test set : Positives + Negatives")
+        print('Get OSCR results')
+        print("Test Set with 'Known Unknown Samples'...")
         ccr, fpr_neg = evals.get_oscr_curve(pred_results['test_neg'][0], pred_results['test_neg'][3]
                                             , unkn_gt_label, at_fpr=None)
-        print("Test set : Positives + Unknowns")
+        print("Test Set with 'Unknown Unknown Samples'...")
         _, fpr_unkn = evals.get_oscr_curve(pred_results['test_unkn'][0], pred_results['test_unkn'][3]
                                            , unkn_gt_label,  at_fpr=None)
-        print()
+        print('Done!\n')
+
         results[which] = (ccr, fpr_neg, fpr_unkn)
 
-    ################################################
-    print('----- Plot OSCR')
-    ################################################
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(f"Final OSCR Plot for {args.approach}")
     try:
         # plot with known unknowns (letters 1:13)
         pyplot.figure(figsize=(10,5))
@@ -247,16 +262,29 @@ def evaluate(args):
         # pdf.savefig(bbox_inches='tight', pad_inches=0)
 
     finally:
-        print('Done!')
+        print('Done!\n')
 
 if __name__ == '__main__':
 
     args = command_line_options()
+    config = tools.load_yaml(args.config)
+
     if args.gpu is not None and torch.cuda.is_available():
         tools.set_device_gpu(args.gpu)
     else:
         print("Running in CPU mode, might be slow")
         tools.set_device_cpu()
 
-    evaluate(args)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(
+        f"Execution Time: {time.strftime('%d %b %Y %H:%M:%S')} \n"
+        f"GPU: {args.gpu} \n"
+        f"Dataset Scale: {args.scale} \n"
+        f"Architecture: {args.arch} \n"
+        f"Approach: {args.approach} \n"
+        f"Configuration: {args.config} \n"
+          )
+    
+    evaluate(args, config)
+    print("Evaluation Done!")
 

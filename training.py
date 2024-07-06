@@ -25,142 +25,134 @@ def command_line_options():
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='This is the main training script for all MNIST experiments. \
-                    Where applicable roman letters are used as negatives. \
-                    During training model with best performance on validation set in the no_of_epochs is used.'
+        description='...TBD'
     )
 
-    parser.add_argument("--approach", "-a", required=True, choices=['SoftMax', 'Garbage', 'EOS', 'Objectosphere','MultiBinary'])
-    parser.add_argument("--arch", "-ar", default='LeNet_plus_plus', choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
-    parser.add_argument('--second_loss_weight', "-w", help='Loss weight for Objectosphere loss', type=float, default=0.0001)
-    parser.add_argument('--Minimum_Knowns_Magnitude', "-m", help='Minimum Possible Magnitude for the Knowns', type=float,
-                        default=50.)
-    parser.add_argument("--solver", default='sgd',choices=['sgd','adam'])
-    parser.add_argument("--lr", "-l", default=0.01, type=float)
-    parser.add_argument('--batch_size', "-b", help='Batch_Size', action="store", type=int, default=128)
-    parser.add_argument("--no_of_epochs", "-e", dest="no_of_epochs", type=int, default=70)
-    parser.add_argument("--dataset", "-dt", default ="SmallScale", help="Choose the scale of training dataset.")
-    parser.add_argument("--dataset_root", "-rt", default ="/tmp", help="Select the directory where datasets are stored.")
-    parser.add_argument("--protocol_root", "-pr", default ="/tmp", help="Select the directory where LargeScale Protocol are stored.")
-    parser.add_argument("--protocol", "-p", default =1, help="Select the LargeScale Protocol.")
+    parser.add_argument("--config", "-cf", default='config/train.yaml', help="The configuration file that defines the experiment")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of training dataset.")
+    parser.add_argument("--arch", "-ar", required=True, choices=['LeNet_plus_plus','ResNet_18', 'ResNet_50'])
+    parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'Garbage', 'EOS','MultiBinary'])
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
 
-def get_loss_functions(args):
-    """Returns the loss function and the data for training and validation"""
-    split_ratio = 0.8
-    num_classes = 10
+def get_data_and_loss(args, config):
+    """...TBD..."""
 
-    if args.dataset == 'SmallScale':
-        data = dataset.EMNIST(args.dataset_root, convert_to_rgb=args.dataset == 'SmallScale' and 'ResNet' in args.arch)
+    if args.scale == 'SmallScale':
+        data = dataset.EMNIST(config.data.smallscale.root, 
+                              split_ratio = config.data.smallscale.split_ratio, seed = config.seed,
+                              convert_to_rgb = args.scale == 'SmallScale' and 'ResNet' in args.arch)
     else:
-        data = dataset.IMAGENET(args.dataset_root, args.protocol_root, args.protocol)
+        data = dataset.IMAGENET(config.data.largescale.root, 
+                                protocol_root = config.data.largescale.protocol, 
+                                protocol = config.data.largescale.level)
     
     if args.approach == "SoftMax":
-        training_data, val_data = data.get_train_set(split_ratio, include_negatives=False)
-        if args.dataset == 'LargeScale':
-            num_classes = training_data.label_count
-            # assert False, f"{num_classes}"
-        return dict(
-                    first_loss_func=nn.CrossEntropyLoss(reduction='mean', ignore_index=-1),
-                    second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
-                    training_data = training_data,
-                    val_data = val_data,
-                    num_classes = num_classes
-                )
+        training_data, val_data, num_classes = data.get_train_set(include_negatives=False, has_background_class=False)
+        loss_func=nn.CrossEntropyLoss(reduction='mean', ignore_index=-1)
+    
     elif args.approach =="Garbage":
-        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=True)
-        if args.dataset == 'LargeScale':
-            num_classes = training_data.label_count
-            # assert False, f"{num_classes}"
-        return dict(
-                    first_loss_func=nn.CrossEntropyLoss(reduction='mean'),
-                    second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
-                    training_data = training_data,
-                    val_data = val_data,
-                    num_classes = num_classes
-                )
+        training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=True)
+        loss_func=nn.CrossEntropyLoss(reduction='mean')
+
     elif args.approach == "EOS":
-        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
-        if args.dataset == 'LargeScale':
-            num_classes = training_data.label_count
-            # assert False, f"{num_classes}"
-        return dict(
-                    first_loss_func=losses.entropic_openset_loss(num_of_classes=num_classes),
-                    second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
-                    training_data = training_data,
-                    val_data = val_data,
-                    num_classes = num_classes
-                )
-    elif args.approach == "Objectosphere":
-        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
-        if args.dataset == 'LargeScale':
-            num_classes = training_data.label_count
-            # assert False, f"{num_classes}"
-        return dict(
-                    first_loss_func=losses.entropic_openset_loss(num_of_classes=num_classes),
-                    second_loss_func=losses.objectoSphere_loss(args.Minimum_Knowns_Magnitude),
-                    training_data = training_data,
-                    val_data = val_data,
-                    num_classes = num_classes
-                )
+        training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
+        loss_func=losses.entropic_openset_loss(num_of_classes=num_classes, unkn_weight=config.loss.eos.unkn_weight)
 
     elif args.approach == "MultiBinary":
-        training_data, val_data = data.get_train_set(split_ratio, include_negatives=True, has_background_class=False)
-        if args.dataset == 'LargeScale':
-            num_classes = training_data.label_count
-            # assert False, f"{num_classes}"
-        return dict(
-                    first_loss_func=losses.multi_binary_loss(num_of_classes=num_classes),
-                    second_loss_func=lambda arg1, arg2, arg3=None, arg4=None: torch.tensor(0.),
-                    training_data = training_data,
-                    val_data = val_data,
-                    num_classes = num_classes
-                )
+        training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
+        loss_func=losses.multi_binary_loss(num_of_classes=num_classes)
 
-def train(args):
-    torch.manual_seed(0)
+    return dict(
+                loss_func=loss_func,
+                training_data = training_data,
+                val_data = val_data,
+                num_classes = num_classes
+            )
+    
+def train(args, config):
+
+    # Load Training Parameters
+    seed = config.seed
+    if args.scale == 'SmallScale':
+        batch_size = config.batch_size.smallscale
+        epochs = config.epochs.smallscale
+    else:
+        batch_size = config.batch_size.largescale
+        epochs = config.epochs.largescale
+    num_workers = config.num_workers
+    solver = config.opt.solver
+    lr = config.opt.lr
+    lr_decay = config.opt.decay
+    lr_gamma = config.opt.gamma
+    
+    # Setting
+    torch.manual_seed(seed)
 
     # get training data and loss function(s)
-    first_loss_func, second_loss_func, training_data, validation_data, num_classes = list(zip(*get_loss_functions(args).items()))[-1]
+    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config).items()))[-1]
 
-    results_dir = pathlib.Path(f"{args.dataset}/{args.arch}/{args.approach}")
+    results_dir = pathlib.Path(f"{args.scale}/{args.arch}/{args.approach}")
+    
+    if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
+        results_dir = pathlib.Path(f"{args.scale}_fc_dim_2/{args.arch}/{args.approach}")
+
+    if args.scale == 'LargeScale' and config.data.largescale.level > 1:
+        results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/{args.arch}/{args.approach}")
+
     model_file = f"{results_dir}/{args.approach}.model"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # instantiate network and data loader
-    net = architectures.__dict__[args.arch](small_scale=args.dataset == 'SmallScale',
-                                            use_BG=args.approach == "Garbage",
+    net = architectures.__dict__[args.arch](use_BG=args.approach == "Garbage",
+                                            force_fc_dim=config.arch.force_fc_dim,
                                             num_classes=num_classes,
                                             final_layer_bias=False)
     net = tools.device(net)
+    
     train_data_loader = torch.utils.data.DataLoader(
         training_data,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=True,
-        num_workers=5,
+        num_workers=num_workers,
         pin_memory=True
     )
     val_data_loader = torch.utils.data.DataLoader(
         validation_data,
-        batch_size=args.batch_size,
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=5,
+        num_workers=num_workers,
         pin_memory=True
     )
 
     # set the solver
-    if args.solver == 'adam':
-        optimizer = optim.Adam(net.parameters(), lr=args.lr)
-    elif args.solver == 'sgd':
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9)
+    if solver == 'adam':
+        optimizer = optim.Adam(net.parameters(), lr=lr)
+    else:
+        optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9)
+    
+    if lr_decay > 0:
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=lr_decay, gamma=lr_gamma)
+
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(
+        f"Configuration Details \n"
+        f"Train: {len(training_data)}\tVal: {len(validation_data)}\n"
+        f"Batch Size: {batch_size} \n"
+        f"Epochs: {epochs} \n"
+        f"Solver: {solver} \n"
+        f"Learning Rate: {lr} (Scheduler: {lr_decay > 0}) \n"
+        f"Results: {model_file} \n"
+          )
 
     # train network
     logs_dir = results_dir/'Logs'
     writer = SummaryWriter(logs_dir)
     prev_confidence = None
-    for epoch in range(1, args.no_of_epochs + 1, 1):
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print("Trainig Start!")
+    for epoch in range(1, epochs + 1, 1):
         t0 = time.time() # Check a duration of one epoch.
 
         loss_history = []
@@ -177,7 +169,7 @@ def train(args):
             logits, features = net(x)
             
             # first loss is always computed, second loss only for some loss functions
-            loss = first_loss_func(logits, y) + args.second_loss_weight * second_loss_func(features, y)
+            loss = loss_func(logits, y)
 
             # metrics on training set
             train_accuracy += losses.accuracy(logits, y)
@@ -194,6 +186,7 @@ def train(args):
             loss.backward()
             optimizer.step()
             # assert False, f"FLAG!"
+        
         # metrics on validation set
         with torch.no_grad():
             val_loss = torch.zeros(2, dtype=float)
@@ -208,7 +201,7 @@ def train(args):
                 y = tools.device(y)
                 logits, features = net(x)
                 
-                loss = first_loss_func(logits, y) + args.second_loss_weight * second_loss_func(features, y)
+                loss = loss_func(logits, y)
 
                 # metrics on validation set
                 val_loss += torch.tensor((loss * len(y), len(y)))
@@ -251,15 +244,31 @@ def train(args):
               f"Saving Model {save_status}")
         # assert False, f"FLAG!"
 
+        if lr_decay > 0:
+            scheduler.step()
+        
+        # assert False, "SUCCESS!"
+
 if __name__ == "__main__":
 
     args = command_line_options()
+    config = tools.load_yaml(args.config)
+
     if args.gpu is not None and torch.cuda.is_available():
         tools.set_device_gpu(args.gpu)
     else:
         print("Running in CPU mode, training might be slow")
         tools.set_device_cpu()
+
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    print(
+        f"Execution Time: {time.strftime('%d %b %Y %H:%M:%S')} \n"
+        f"GPU: {args.gpu} \n"
+        f"Dataset Scale: {args.scale} \n"
+        f"Architecture: {args.arch} \n"
+        f"Approach: {args.approach} \n"
+        f"Configuration: {args.config} \n"
+          )
         
-    print(f"{args.approach}\t{args.arch}\t{args.dataset}\t{args.dataset_root}")
-    train(args)
-    print("Done!")
+    train(args, config)
+    print("Training Done!")
