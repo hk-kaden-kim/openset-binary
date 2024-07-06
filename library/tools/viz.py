@@ -5,7 +5,6 @@ from matplotlib import pyplot as plt
 import torch
 from torch.nn import functional as F
 
-# Source for distinct colors https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
 colors_global = np.array(
     [
         '#1f77b4',

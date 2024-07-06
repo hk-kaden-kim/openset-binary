@@ -20,29 +20,13 @@ class multi_binary_loss:
         all_probs = F.sigmoid(logit_values)
 
         # Get balancing weights
-        # t_weights = torch.ones(self.num_of_classes) # TODO: Task-Balance
-        # s_weights = torch.ones(logit_values.shape[0]) # TODO: Class-Balance
-        weights = torch.ones(all_probs.shape)
+        weights = torch.ones(all_probs.shape) # TODO: Hard-Negative Mining
 
         # assign newly created tensor to gpu if cuda is available
         if torch.cuda.is_available():
             gpu = all_probs.get_device()
-            # t_weights = t_weights.to(gpu)
-            # s_weights = s_weights.to(gpu)
             weights = weights.to(gpu)
-        # assert False, f"{all_target.get_device()}\t{all_probs.get_device()}\t{t_weights.get_device()}\t{s_weights.get_device()}"
 
-        # TODO: No need to use for loop. because we can give weights(task + sample)  all together.
-        # Calculate Loss by each binary classifier
-        # for j in range(all_probs.shape[1]):
-        #     probs = all_probs[:,j]
-        #     targets = all_target[:,j]
-        #     task_loss = (t_weights[j] * F.binary_cross_entropy(probs, targets, s_weights)).reshape(-1)
-        #     if j == 0:
-        #         all_loss = task_loss
-        #     else:
-        #         all_loss = torch.concat([all_loss, task_loss])
-        
         all_loss = F.binary_cross_entropy(all_probs, all_target, weights)
 
         return all_loss
@@ -56,11 +40,11 @@ class multi_binary_loss:
 
 class entropic_openset_loss:
 
-    def __init__(self, num_of_classes=10):
+    def __init__(self, num_of_classes=10, unkn_weight=1):
         self.num_of_classes = num_of_classes
         self.eye = tools.device(torch.eye(self.num_of_classes))
         self.ones = tools.device(torch.ones(self.num_of_classes))
-        self.unknowns_multiplier = 1.0 / self.num_of_classes
+        self.unknowns_multiplier = unkn_weight / self.num_of_classes
 
     @tools.loss_reducer
     def __call__(self, logit_values, target, sample_weights=None):

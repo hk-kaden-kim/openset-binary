@@ -16,21 +16,62 @@ set_device_cpu()
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
-def load_network(args, which, num_classes):
-    network_file = os.path.join(args.model_root, f"{args.dataset}/{args.arch}/{which}/{which}.model")
-    # print(network_file)
+def print_table(unique_values:numpy.array, value_counts:numpy.array, max_columns=10):
+    # Calculate the number of rows needed
+    num_rows = len(unique_values) // max_columns + (len(unique_values) % max_columns > 0)
+
+    # Create an empty table
+    table = numpy.zeros((num_rows, max_columns), dtype=int)
+
+    # Fill in the table with value counts
+    for i, count in enumerate(value_counts):
+        row, col = divmod(i, max_columns)
+        table[row, col] = count
+
+    # Print the table
+    print(f"Total: {sum(value_counts)}")
+    for i, value in enumerate(unique_values):
+        row, col = divmod(i, max_columns)
+        print(f"{value}: {table[row, col]:<10}", end="")
+        if col == max_columns - 1 or i == len(unique_values) - 1:
+            print()
+    print()
+    
+def load_network(args, config, which, num_classes):
+
+    network_file = os.path.join(config.arch.model_root, f"{args.scale}/{args.arch}/{which}")
+    
+    if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
+        network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
+
+    if config.data.largescale.level > 1 and args.scale == 'LargeScale':
+        network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
+
+    if config.need_sync:
+        network_file = os.path.join(network_file, f"{which}.pth")
+    else:
+        network_file = os.path.join(network_file, f"{which}.model")
+
     if os.path.exists(network_file):
-        net = architectures.__dict__[args.arch](small_scale=args.dataset == 'SmallScale',
-                                                use_BG=which=="Garbage",
+        net = architectures.__dict__[args.arch](use_BG=which=="Garbage",
+                                                force_fc_dim=config.arch.force_fc_dim,
                                                 num_classes=num_classes,
                                                 final_layer_bias=False)
-        net.load_state_dict(torch.load(network_file))
-        device(net)
-        return net
-    else:
-        return None
+        print(f"FLAG {network_file}")
+        torch.cuda.empty_cache()
+        checkpoint = torch.load(network_file)
 
-def extract(dataset, net, batch_size=2048):
+        if config.need_sync:
+            print('Weights are came from the reference code! Sync the weight name!')
+            checkpoint = architectures.checkpoint_sync(checkpoint["model_state_dict"])
+        
+        net.load_state_dict(checkpoint)
+        device(net)
+
+        return net
+    return None
+
+def extract(dataset, net, batch_size=2048, is_verbose=False):
     '''
     return : gt, logits, feats
     '''
@@ -38,7 +79,7 @@ def extract(dataset, net, batch_size=2048):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
-        for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600):
+        for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600, disable=not is_verbose):
             gt.extend(y.tolist())
             logs, feat = net(device(x))
             logits.extend(logs.tolist())
@@ -47,7 +88,11 @@ def extract(dataset, net, batch_size=2048):
     gt = numpy.array(gt)
     logits = numpy.array(logits)
     feats = numpy.array(feats)
-    print('\tFinish!')
+
+    print("\nEvaluation Dataset Stats:")
+    stats = numpy.unique(gt, return_counts=True)
+    print_table(stats[0], stats[1])
+
     return [gt, logits, feats]
 
 def find_ccr_at_fpr(FPR:numpy.array, CCR:numpy.array, ref_fpr:float):
@@ -55,15 +100,15 @@ def find_ccr_at_fpr(FPR:numpy.array, CCR:numpy.array, ref_fpr:float):
     ccr = f(ref_fpr).item()
     return ccr
 
-def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1, at_fpr=0.01):
+def get_oscr_curve(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1, at_fpr=0.01, is_verbose=False):
 
     # vary thresholds
     ccr, fpr = [], []
     kn_probs = test_probs[test_gt != unkn_gt_label]
     unkn_probs = test_probs[test_gt == unkn_gt_label]
     gt = test_gt[test_gt != unkn_gt_label]
-    # print(range(len(gt)), gt, kn_probs.shape)
-    for tau in tqdm(sorted(kn_probs[range(len(gt)),gt]), miniters=int(len(gt)/5), maxinterval=600):
+
+    for tau in tqdm(sorted(kn_probs[range(len(gt)),gt]), miniters=int(len(gt)/5), maxinterval=600, disable=not is_verbose):
         # correct classification rate
         ccr.append(numpy.sum(numpy.logical_and(
             numpy.argmax(kn_probs, axis=1) == gt,
@@ -81,7 +126,7 @@ def eval_pred_save(pred_results:dict, root:str, save_feats=True):
 
     if not os.path.exists(root):
         os.makedirs(root)
-        print(f"\tFolder '{root}' created successfully.")
+        print(f"Folder '{root}' created successfully.")
 
     # Save the dictionary keys
     keys_list = list(pred_results.keys())
@@ -96,6 +141,8 @@ def eval_pred_save(pred_results:dict, root:str, save_feats=True):
                 if not save_feats and i == 2:
                     continue
                 numpy.save(os.path.join(root, f'{key}_{pred_name[i]}.npy'), arr)
+    
+    print(f"Prediction Saved Successfully!\n{root}\n")
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
