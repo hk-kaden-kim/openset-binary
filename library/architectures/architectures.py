@@ -62,6 +62,7 @@ def checkpoint_sync(checkpoint:OrderedDict):
             new_checkpoint.update({key.replace('logits','fc2'):value})
     
     return new_checkpoint
+
 ########################################################################
 # Reference
 # 

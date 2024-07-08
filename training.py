@@ -207,7 +207,7 @@ def train(args, config):
                 val_loss += torch.tensor((loss * len(y), len(y)))
                 val_accuracy += losses.accuracy(logits, y)
                 if args.approach in ("MultiBinary"):
-                    val_confidence += losses.multi_binary_confidence(logits, y, num_classes)
+                    val_confidence += losses.multi_binary_confidence(logits, y, num_classes) # Check to get the right confidence 
                 else:
                     val_confidence += losses.confidence(logits, y)
                 if args.approach not in ("SoftMax", "Garbage"):

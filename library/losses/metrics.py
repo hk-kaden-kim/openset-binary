@@ -7,19 +7,7 @@ from .. import tools
 
 def multi_binary_confidence(logits, target, num_of_classes=10):
     """Measures the multi binary confidence of the correct class for known samples,
-    and 1 + negative_offset - max(confidence) for unknown samples.
-
-    Parameters:
-
-      logits: the output of the network, must be logits
-
-      target: the vector of true classes; can be -1 for unknown samples
-
-    Returns a tensor with two entries:
-
-      confidence: the sum of the confidence values for the samples
-
-      total: The total number of considered samples
+        ...
     """
 
     with torch.no_grad():
