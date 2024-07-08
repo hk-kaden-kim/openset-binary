@@ -126,7 +126,9 @@ def evaluate(args, config):
     results = {}
     root = pathlib.Path(f"{args.scale}/eval_{args.arch}")
     if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
-        root = pathlib.Path(f"{args.scale}/eval_{args.arch}_fc_dim_2")
+        root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
+    if args.scale == 'LargeScale' and config.data.largescale.level > 1:
+        root = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -182,9 +184,10 @@ def evaluate(args, config):
             continue
         
         print("Execute predictions!")
-        print(f"{time.strftime('%H:%M:%S')} Training Set...")
-        pred_results['train'] = evals.extract(train_set_neg, net, batch_size, is_verbose=True)
-        print(f"{time.strftime('%H:%M:%S')} Done!")
+        if args.scale == 'SmallScale':
+            print(f"{time.strftime('%H:%M:%S')} Training Set...")
+            pred_results['train'] = evals.extract(train_set_neg, net, batch_size, is_verbose=True)
+            print(f"{time.strftime('%H:%M:%S')} Done!")
         print(f"{time.strftime('%H:%M:%S')} Test Set with 'Known Unknown Samples'...")
         pred_results['test_neg'] = evals.extract(test_set_neg, net,  batch_size, is_verbose=True)
         print(f"{time.strftime('%H:%M:%S')} Done!")
@@ -195,11 +198,13 @@ def evaluate(args, config):
 
         # Calculate Probs
         if which == "MultiBinary":
-            train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
+            if args.scale == 'SmallScale':
+                train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
             test_neg_probs = F.sigmoid(torch.tensor(pred_results['test_neg'][1])).detach().numpy()
             test_unkn_probs  = F.sigmoid(torch.tensor(pred_results['test_unkn'][1])).detach().numpy()
         else:
-            train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
+            if args.scale == 'SmallScale':
+                train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
             test_neg_probs = F.softmax(torch.tensor(pred_results['test_neg'][1]), dim=1).detach().numpy()
             test_unkn_probs  = F.softmax(torch.tensor(pred_results['test_unkn'][1]), dim=1).detach().numpy()
 
@@ -208,14 +213,15 @@ def evaluate(args, config):
             test_neg_probs = test_neg_probs[:,:-1]
             test_unkn_probs = test_unkn_probs[:,:-1]
         
-        pred_results['train'].append(train_probs)
+        if args.scale == 'SmallScale':
+            pred_results['train'].append(train_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
         if config.pred_save:
             evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = args.arch == 'LeNet_plus_plus')
 
-        if config.arch.force_fc_dim == 2:
+        if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
             deep_features_plot(which, net, 
                                results_dir=results_dir, 
                                unkn_gt_label=unkn_gt_label, 
@@ -233,6 +239,9 @@ def evaluate(args, config):
         print('Done!\n')
 
         results[which] = (ccr, fpr_neg, fpr_unkn)
+
+        torch.cuda.empty_cache()
+        print('Release Unoccupied cache in GPU!')
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     print(f"Final OSCR Plot for {args.approach}")

@@ -4,7 +4,7 @@
 seed: 42        # Common seed across all source of randomness
 batch_size: 
   smallscale: 2048 
-  largescale: 64
+  largescale: 256
 pred_save: 1    # Set as '1' if you want to save the prediction results
 need_sync: 0    # Set as '1' if the model is trained with the reference code.
 

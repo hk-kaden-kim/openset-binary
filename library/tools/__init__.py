@@ -85,8 +85,7 @@ def device(x):
     global _device
     if _device is None:
         import torch
-
-        _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        _device = torch.device(get_device() if torch.cuda.is_available() else "cpu")
     return x.to(_device)
 
 

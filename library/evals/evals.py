@@ -5,9 +5,10 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 
 from ..architectures import architectures
-from ..tools import device, set_device_cpu
+from ..tools import device, set_device_cpu, get_device
 
-set_device_cpu()
+# set_device_cpu()
+
 ########################################################################
 # Reference Code
 # 
@@ -57,13 +58,11 @@ def load_network(args, config, which, num_classes):
                                                 force_fc_dim=config.arch.force_fc_dim,
                                                 num_classes=num_classes,
                                                 final_layer_bias=False)
-        print(f"FLAG {network_file}")
-        torch.cuda.empty_cache()
-        checkpoint = torch.load(network_file)
+        checkpoint = torch.load(network_file, map_location=torch.device('cpu')) 
 
         if config.need_sync:
             print('Weights are came from the reference code! Sync the weight name!')
-            checkpoint = architectures.checkpoint_sync(checkpoint["model_state_dict"])
+            checkpoint = architectures.checkpoint_sync(checkpoint["model_state_dict"], map_location=torch.device('cpu'))     
         
         net.load_state_dict(checkpoint)
         device(net)
