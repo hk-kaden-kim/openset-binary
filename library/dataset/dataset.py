@@ -13,7 +13,7 @@ from PIL import Image
 import numpy as np
 
 def transpose(x):
-    """Used for correcting rotation of EMNIST Letters"""
+    """Used for correcting rotation of EMNIST"""
     return x.transpose(2,1)
 
 class EMNIST():
@@ -46,7 +46,6 @@ class EMNIST():
                         train=False,
                         download=False,
                         split="mnist",
-                        # transform=transforms.Compose([transforms.ToTensor(), transpose])
                         transform=transforms.Compose(data_transform)
                     )
         self.train_letters = torchvision.datasets.EMNIST(

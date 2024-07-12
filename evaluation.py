@@ -36,7 +36,7 @@ def command_line_options():
 
     parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of evaluation dataset.")
-    parser.add_argument("--arch", "-ar", required=True, choices=['LeNet_plus_plus', 'ResNet_18', 'ResNet_50'])
+    parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
@@ -167,16 +167,6 @@ def evaluate(args, config):
             _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
             unkn_gt_label = -1
         
-        # print("Evaluation Dataset Stats:")
-        # print("Training Set...")
-        # tools.dataset_stats(train_set_neg, batch_size, is_verbose=True)
-        # print("Test Set with 'Known Unknown Samples'...")
-        # tools.dataset_stats(test_set_neg, batch_size, is_verbose=True)
-        # print("Test Set with 'Unknown Unknown Samples'...")
-        # tools.dataset_stats(test_set_unkn, batch_size, is_verbose=True)
-        # print()
-        # assert False, f"FLAG!"
-
         # Load weights of the model
         net = evals.load_network(args, config, which, num_classes)
         if net is None:
@@ -219,7 +209,7 @@ def evaluate(args, config):
         pred_results['test_unkn'].append(test_unkn_probs)
 
         if config.pred_save:
-            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = args.arch == 'LeNet_plus_plus')
+            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
 
         if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
             deep_features_plot(which, net, 

@@ -30,7 +30,7 @@ def command_line_options():
 
     parser.add_argument("--config", "-cf", default='config/train.yaml', help="The configuration file that defines the experiment")
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of training dataset.")
-    parser.add_argument("--arch", "-ar", required=True, choices=['LeNet_plus_plus','ResNet_18', 'ResNet_50'])
+    parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'Garbage', 'EOS','MultiBinary'])
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
@@ -105,10 +105,24 @@ def train(args, config):
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # instantiate network and data loader
-    net = architectures.__dict__[args.arch](use_BG=args.approach == "Garbage",
+    # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
+    final_layer_bias = False 
+    if args.approach in ['Garbage','MultiBinary']:
+        final_layer_bias = True
+
+    if 'LeNet_plus_plus' in args.arch:
+        arch_name = 'LeNet_plus_plus'
+    elif 'ResNet_18' in args.arch:
+        arch_name = 'ResNet_18'
+    elif 'ResNet_50' in args.arch:
+        arch_name = 'ResNet_50'
+    else:
+        arch_name = None
+    net = architectures.__dict__[arch_name](use_BG=args.approach == "Garbage",
                                             force_fc_dim=config.arch.force_fc_dim,
                                             num_classes=num_classes,
-                                            final_layer_bias=False)
+                                            final_layer_bias=final_layer_bias)
+
     net = tools.device(net)
     
     train_data_loader = torch.utils.data.DataLoader(

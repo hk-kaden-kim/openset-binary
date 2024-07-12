@@ -20,6 +20,8 @@ class ResNet_18(nn.Module):
         resnet_base.fc = nn.Linear(in_features=fc_in_features, out_features=fc_layer_dim)
 
         self.fc1 = resnet_base
+        if final_layer_bias:
+            print('Classifier has a bias term.')
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
         
     def forward(self, x):
@@ -45,6 +47,8 @@ class ResNet_50(nn.Module):
         resnet_base.fc = nn.Linear(in_features=fc_in_features, out_features=fc_layer_dim)
 
         self.fc1 = resnet_base
+        if final_layer_bias:
+            print('Classifier has a bias term.')
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
                 
     def forward(self, x):
@@ -130,6 +134,9 @@ class LeNet_plus_plus(nn.Module):
             in_features=self.conv3_2.out_channels * 3 * 3, out_features=fc_layer_dim, bias=True
         )
 
+        if final_layer_bias:
+            print('Classifier has a bias term.')
+
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
 
         self.prelu_act1 = nn.PReLU()
@@ -149,236 +156,3 @@ class LeNet_plus_plus(nn.Module):
     
     def deep_feature_forward(self, y):
         return self.fc2(y)
-
-
-########################################################################
-# LeNet++ Test for the effect of Feature Space Dimension
-########################################################################
-
-class LeNet_plus_plus_3(nn.Module):
-    def __init__(self, use_classification_layer=True, use_BG=False, num_classes=10, final_layer_bias=True):
-        super(LeNet_plus_plus_3, self).__init__()
-        self.conv1_1 = nn.Conv2d(
-            in_channels=1, out_channels=32, kernel_size=(5, 5), stride=1, padding=2
-        )
-        self.conv1_2 = nn.Conv2d(
-            in_channels=self.conv1_1.out_channels,
-            out_channels=32,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm1 = nn.BatchNorm2d(self.conv1_2.out_channels)
-        self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
-        self.conv2_1 = nn.Conv2d(
-            in_channels=self.conv1_2.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv2_2 = nn.Conv2d(
-            in_channels=self.conv2_1.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm2 = nn.BatchNorm2d(self.conv2_2.out_channels)
-        self.conv3_1 = nn.Conv2d(
-            in_channels=self.conv2_2.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv3_2 = nn.Conv2d(
-            in_channels=self.conv3_1.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm3 = nn.BatchNorm2d(self.conv3_2.out_channels)
-        self.fc1 = nn.Linear(
-            in_features=self.conv3_2.out_channels * 3 * 3, out_features=3, bias=True
-        )
-        if use_classification_layer:
-            if use_BG:
-                self.fc2 = nn.Linear(
-                    in_features=3, out_features=num_classes + 1, bias=final_layer_bias
-                )
-            else:
-                self.fc2 = nn.Linear(in_features=3, out_features=num_classes, bias=final_layer_bias)
-        self.use_classification_layer = use_classification_layer
-        self.prelu_act1 = nn.PReLU()
-        self.prelu_act2 = nn.PReLU()
-        self.prelu_act3 = nn.PReLU()
-
-    def forward(self, x):
-        x = self.prelu_act1(self.pool(self.batch_norm1(self.conv1_2(self.conv1_1(x)))))
-        x = self.prelu_act2(self.pool(self.batch_norm2(self.conv2_2(self.conv2_1(x)))))
-        x = self.prelu_act3(self.pool(self.batch_norm3(self.conv3_2(self.conv3_1(x)))))
-        x = x.view(-1, self.conv3_2.out_channels * 3 * 3)
-
-        y = self.fc1(x) # Features
-        if self.use_classification_layer:
-            x = self.fc2(y) # Logits
-            return x, y
-        return y
-    
-    def deep_feature_forward(self, y):
-        return self.fc2(y)
-
-
-class LeNet_plus_plus_5(nn.Module):
-    def __init__(self, use_classification_layer=True, use_BG=False, num_classes=10, final_layer_bias=True):
-        super(LeNet_plus_plus_5, self).__init__()
-        self.conv1_1 = nn.Conv2d(
-            in_channels=1, out_channels=32, kernel_size=(5, 5), stride=1, padding=2
-        )
-        self.conv1_2 = nn.Conv2d(
-            in_channels=self.conv1_1.out_channels,
-            out_channels=32,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm1 = nn.BatchNorm2d(self.conv1_2.out_channels)
-        self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
-        self.conv2_1 = nn.Conv2d(
-            in_channels=self.conv1_2.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv2_2 = nn.Conv2d(
-            in_channels=self.conv2_1.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm2 = nn.BatchNorm2d(self.conv2_2.out_channels)
-        self.conv3_1 = nn.Conv2d(
-            in_channels=self.conv2_2.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv3_2 = nn.Conv2d(
-            in_channels=self.conv3_1.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm3 = nn.BatchNorm2d(self.conv3_2.out_channels)
-        self.fc1 = nn.Linear(
-            in_features=self.conv3_2.out_channels * 3 * 3, out_features=5, bias=True
-        )
-        if use_classification_layer:
-            if use_BG:
-                self.fc2 = nn.Linear(
-                    in_features=5, out_features=num_classes + 1, bias=final_layer_bias
-                )
-            else:
-                self.fc2 = nn.Linear(in_features=5, out_features=num_classes, bias=final_layer_bias)
-        self.use_classification_layer = use_classification_layer
-        self.prelu_act1 = nn.PReLU()
-        self.prelu_act2 = nn.PReLU()
-        self.prelu_act3 = nn.PReLU()
-
-    def forward(self, x):
-        x = self.prelu_act1(self.pool(self.batch_norm1(self.conv1_2(self.conv1_1(x)))))
-        x = self.prelu_act2(self.pool(self.batch_norm2(self.conv2_2(self.conv2_1(x)))))
-        x = self.prelu_act3(self.pool(self.batch_norm3(self.conv3_2(self.conv3_1(x)))))
-        x = x.view(-1, self.conv3_2.out_channels * 3 * 3)
-
-        y = self.fc1(x) # Features
-        if self.use_classification_layer:
-            x = self.fc2(y) # Logits
-            return x, y
-        return y
-    
-    def deep_feature_forward(self, y):
-        return self.fc2(y)
-
-
-class LeNet_plus_plus_10(nn.Module):
-    def __init__(self, use_classification_layer=True, use_BG=False, num_classes=10, final_layer_bias=True):
-        super(LeNet_plus_plus_10, self).__init__()
-        self.conv1_1 = nn.Conv2d(
-            in_channels=1, out_channels=32, kernel_size=(5, 5), stride=1, padding=2
-        )
-        self.conv1_2 = nn.Conv2d(
-            in_channels=self.conv1_1.out_channels,
-            out_channels=32,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm1 = nn.BatchNorm2d(self.conv1_2.out_channels)
-        self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=2)
-        self.conv2_1 = nn.Conv2d(
-            in_channels=self.conv1_2.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv2_2 = nn.Conv2d(
-            in_channels=self.conv2_1.out_channels,
-            out_channels=64,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm2 = nn.BatchNorm2d(self.conv2_2.out_channels)
-        self.conv3_1 = nn.Conv2d(
-            in_channels=self.conv2_2.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.conv3_2 = nn.Conv2d(
-            in_channels=self.conv3_1.out_channels,
-            out_channels=128,
-            kernel_size=(5, 5),
-            stride=1,
-            padding=2,
-        )
-        self.batch_norm3 = nn.BatchNorm2d(self.conv3_2.out_channels)
-        self.fc1 = nn.Linear(
-            in_features=self.conv3_2.out_channels * 3 * 3, out_features=10, bias=True
-        )
-        if use_classification_layer:
-            if use_BG:
-                self.fc2 = nn.Linear(
-                    in_features=10, out_features=num_classes + 1, bias=final_layer_bias
-                )
-            else:
-                self.fc2 = nn.Linear(in_features=10, out_features=num_classes, bias=final_layer_bias)
-        self.use_classification_layer = use_classification_layer
-        self.prelu_act1 = nn.PReLU()
-        self.prelu_act2 = nn.PReLU()
-        self.prelu_act3 = nn.PReLU()
-
-    def forward(self, x):
-        x = self.prelu_act1(self.pool(self.batch_norm1(self.conv1_2(self.conv1_1(x)))))
-        x = self.prelu_act2(self.pool(self.batch_norm2(self.conv2_2(self.conv2_1(x)))))
-        x = self.prelu_act3(self.pool(self.batch_norm3(self.conv3_2(self.conv3_1(x)))))
-        x = x.view(-1, self.conv3_2.out_channels * 3 * 3)
-
-        y = self.fc1(x) # Features
-        if self.use_classification_layer:
-            x = self.fc2(y) # Logits
-            return x, y
-        return y
-    
-    def deep_feature_forward(self, y):
-        return self.fc2(y)
-

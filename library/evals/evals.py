@@ -54,10 +54,25 @@ def load_network(args, config, which, num_classes):
         network_file = os.path.join(network_file, f"{which}.model")
 
     if os.path.exists(network_file):
-        net = architectures.__dict__[args.arch](use_BG=which=="Garbage",
+
+        # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
+        final_layer_bias = False 
+        if args.approach in ['Garbage','MultiBinary']:
+            final_layer_bias = True
+
+        if 'LeNet_plus_plus' in args.arch:
+            arch_name = 'LeNet_plus_plus'
+        elif 'ResNet_18' in args.arch:
+            arch_name = 'ResNet_18'
+        elif 'ResNet_50' in args.arch:
+            arch_name = 'ResNet_50'
+        else:
+            arch_name = None
+
+        net = architectures.__dict__[arch_name](use_BG=which=="Garbage",
                                                 force_fc_dim=config.arch.force_fc_dim,
                                                 num_classes=num_classes,
-                                                final_layer_bias=False)
+                                                final_layer_bias=final_layer_bias)
         checkpoint = torch.load(network_file, map_location=torch.device('cpu')) 
 
         if config.need_sync:
