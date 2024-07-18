@@ -125,8 +125,10 @@ def evaluate(args, config):
     # Save or Plot results
     results = {}
     root = pathlib.Path(f"{args.scale}/eval_{args.arch}")
-    if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
-        root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
+
+    # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
+    #     root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
+    
     if args.scale == 'LargeScale' and config.data.largescale.level > 1:
         root = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
@@ -136,6 +138,7 @@ def evaluate(args, config):
         f"Configuration Details \n"
         f"Model Root: {config.arch.model_root}\n"
         f"Save Predictions: {config.pred_save==1}\n"
+        f"Save Predictions: {config.oscr_save==1}\n"
           )
 
     for which in args.approach:
@@ -198,20 +201,25 @@ def evaluate(args, config):
             test_neg_probs = F.softmax(torch.tensor(pred_results['test_neg'][1]), dim=1).detach().numpy()
             test_unkn_probs  = F.softmax(torch.tensor(pred_results['test_unkn'][1]), dim=1).detach().numpy()
 
-        # remove the labels for the unknown class in case of Garbage Class
-        if which == "Garbage":
-            test_neg_probs = test_neg_probs[:,:-1]
-            test_unkn_probs = test_unkn_probs[:,:-1]
+        # # remove the labels for the unknown class in case of Garbage Class
+        # if which == "Garbage":
+        #     test_neg_probs = test_neg_probs[:,:-1]
+        #     test_unkn_probs = test_unkn_probs[:,:-1]
         
         if args.scale == 'SmallScale':
             pred_results['train'].append(train_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
+        # # remove the labels for the unknown class in case of Garbage Class
         if config.pred_save:
             evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
 
-        if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
+        if which == "Garbage":
+            pred_results['test_neg'][-1] = pred_results['test_neg'][-1][:,:-1]
+            pred_results['test_unkn'][-1] = pred_results['test_unkn'][-1][:,:-1]
+
+        if args.scale == 'SmallScale':
             deep_features_plot(which, net, 
                                results_dir=results_dir, 
                                unkn_gt_label=unkn_gt_label, 
@@ -230,13 +238,16 @@ def evaluate(args, config):
 
         results[which] = (ccr, fpr_neg, fpr_unkn)
 
+        if config.oscr_save:
+            evals.oscr_save(ccr, fpr_neg, fpr_unkn, results_dir.joinpath('oscr'))
+
         torch.cuda.empty_cache()
         print('Release Unoccupied cache in GPU!')
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     print(f"Final OSCR Plot for {args.approach}")
     try:
-        # plot with known unknowns (letters 1:13)
+        # plot with known unknowns
         pyplot.figure(figsize=(10,5))
         for which, res in results.items():
             pyplot.semilogx(res[1], res[0], label=labels[which])
@@ -246,9 +257,8 @@ def evaluate(args, config):
         pyplot.title("Negative Set")
         pyplot.tight_layout()
         pyplot.savefig(root.joinpath('oscr_neg.png'), bbox_inches="tight") 
-        # pdf.savefig(bbox_inches='tight', pad_inches=0)
         
-        # plot with unknown unknowns (letters 14:26)
+        # plot with unknown unknowns
         pyplot.figure(figsize=(10,5))
         for which, res in results.items():
             pyplot.semilogx(res[2], res[0], label=labels[which])
@@ -258,7 +268,6 @@ def evaluate(args, config):
         pyplot.title("Unknown Set")
         pyplot.tight_layout()
         pyplot.savefig(root.joinpath('oscr_unkn.png'), bbox_inches="tight") 
-        # pdf.savefig(bbox_inches='tight', pad_inches=0)
 
     finally:
         print('Done!\n')
