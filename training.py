@@ -62,7 +62,14 @@ def get_data_and_loss(args, config):
 
     elif args.approach == "MultiBinary":
         training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
-        loss_func=losses.multi_binary_loss(num_of_classes=num_classes)
+        if config.loss.mbc.weight_global:
+            gt_labels = dataset.get_gt_labels(training_data)
+        else:
+            gt_labels = None
+        loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, 
+                                           weight_global=config.loss.mbc.weight_global, 
+                                           weigith_init_val = config.loss.mbc.weight_init_val, 
+                                           unknown_multiplier=config.loss.mbc.unkn_weight)
 
     return dict(
                 loss_func=loss_func,
@@ -95,8 +102,8 @@ def train(args, config):
 
     results_dir = pathlib.Path(f"{args.scale}/{args.arch}/{args.approach}")
     
-    if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
-        results_dir = pathlib.Path(f"{args.scale}_fc_dim_2/{args.arch}/{args.approach}")
+    # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
+    #     results_dir = pathlib.Path(f"{args.scale}_fc_dim_2/{args.arch}/{args.approach}")
 
     if args.scale == 'LargeScale' and config.data.largescale.level > 1:
         results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/{args.arch}/{args.approach}")
@@ -119,7 +126,6 @@ def train(args, config):
     else:
         arch_name = None
     net = architectures.__dict__[arch_name](use_BG=args.approach == "Garbage",
-                                            force_fc_dim=config.arch.force_fc_dim,
                                             num_classes=num_classes,
                                             final_layer_bias=final_layer_bias)
 
@@ -176,6 +182,7 @@ def train(args, config):
         net.train()
         
         # update the network weights
+        i = 0
         for x, y in train_data_loader:
             x = tools.device(x)
             y = tools.device(y)
@@ -199,7 +206,9 @@ def train(args, config):
             loss_history.append(loss)
             loss.backward()
             optimizer.step()
-            # assert False, f"FLAG!"
+
+            # i+=1
+            # assert i < 3, f"FLAG!"
         
         # metrics on validation set
         with torch.no_grad():
@@ -261,7 +270,6 @@ def train(args, config):
         if lr_decay > 0:
             scheduler.step()
         
-        # assert False, "SUCCESS!"
 
 if __name__ == "__main__":
 
