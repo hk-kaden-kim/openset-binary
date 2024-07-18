@@ -2,7 +2,7 @@ from .lossReduction import loss_reducer
 from .viz import *
 
 import yaml
-import numpy as np
+import numpy
 from tqdm import tqdm
 
 _device = None
@@ -46,6 +46,28 @@ def load_yaml(yaml_file):
     """Loads a YAML file into a nested namespace object"""
     config = yaml.safe_load(open(yaml_file, 'r'))
     return NameSpace(config)
+
+
+def print_table(unique_values:numpy.array, value_counts:numpy.array, max_columns=10):
+    # Calculate the number of rows needed
+    num_rows = len(unique_values) // max_columns + (len(unique_values) % max_columns > 0)
+
+    # Create an empty table
+    table = numpy.zeros((num_rows, max_columns), dtype=int)
+
+    # Fill in the table with value counts
+    for i, count in enumerate(value_counts):
+        row, col = divmod(i, max_columns)
+        table[row, col] = count
+
+    # Print the table
+    print(f"Total: {sum(value_counts)}")
+    for i, value in enumerate(unique_values):
+        row, col = divmod(i, max_columns)
+        print(f"{value}: {table[row, col]:<10}", end="")
+        if col == max_columns - 1 or i == len(unique_values) - 1:
+            print()
+    print()
 
 # def print_table(unique_values:np.array, value_counts:np.array, max_columns=10):
 #     # Calculate the number of rows needed

@@ -3,7 +3,7 @@ from torchvision import models
 from collections import OrderedDict
 
 class ResNet_18(nn.Module):
-    def __init__(self, force_fc_dim=-1, use_BG=False, num_classes=10, final_layer_bias=True):
+    def __init__(self, force_fc_dim=1000, use_BG=False, num_classes=10, final_layer_bias=True):
         super(ResNet_18, self).__init__()
         resnet_base = models.resnet18(weights=None)
         fc_in_features = resnet_base.fc.in_features
@@ -30,7 +30,7 @@ class ResNet_18(nn.Module):
         return x, y
 
 class ResNet_50(nn.Module):
-    def __init__(self, force_fc_dim=-1, use_BG=False, num_classes=10, final_layer_bias=True):
+    def __init__(self, force_fc_dim=1000, use_BG=False, num_classes=10, final_layer_bias=True):
         super(ResNet_50, self).__init__()
         resnet_base = models.resnet50(weights=None)
         fc_in_features = resnet_base.fc.in_features
@@ -76,7 +76,7 @@ def checkpoint_sync(checkpoint:OrderedDict):
 ########################################################################
 
 class LeNet_plus_plus(nn.Module):
-    def __init__(self, force_fc_dim=-1, use_BG=False, num_classes=10, final_layer_bias=True):
+    def __init__(self, force_fc_dim=2, use_BG=False, num_classes=10, final_layer_bias=True):
         super(LeNet_plus_plus, self).__init__()
         self.conv1_1 = nn.Conv2d(
             in_channels=1, out_channels=32, kernel_size=(5, 5), stride=1, padding=2

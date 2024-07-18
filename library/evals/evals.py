@@ -5,7 +5,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 
 from ..architectures import architectures
-from ..tools import device, set_device_cpu, get_device
+from ..tools import device, set_device_cpu, get_device, print_table
 
 # set_device_cpu()
 
@@ -16,34 +16,13 @@ from ..tools import device, set_device_cpu, get_device
 # Date: 2024
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
-
-def print_table(unique_values:numpy.array, value_counts:numpy.array, max_columns=10):
-    # Calculate the number of rows needed
-    num_rows = len(unique_values) // max_columns + (len(unique_values) % max_columns > 0)
-
-    # Create an empty table
-    table = numpy.zeros((num_rows, max_columns), dtype=int)
-
-    # Fill in the table with value counts
-    for i, count in enumerate(value_counts):
-        row, col = divmod(i, max_columns)
-        table[row, col] = count
-
-    # Print the table
-    print(f"Total: {sum(value_counts)}")
-    for i, value in enumerate(unique_values):
-        row, col = divmod(i, max_columns)
-        print(f"{value}: {table[row, col]:<10}", end="")
-        if col == max_columns - 1 or i == len(unique_values) - 1:
-            print()
-    print()
     
 def load_network(args, config, which, num_classes):
 
     network_file = os.path.join(config.arch.model_root, f"{args.scale}/{args.arch}/{which}")
     
-    if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
-        network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
+    # if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
+    #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
 
     if config.data.largescale.level > 1 and args.scale == 'LargeScale':
         network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
@@ -57,9 +36,9 @@ def load_network(args, config, which, num_classes):
 
         # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
         final_layer_bias = False 
-        if args.approach in ['Garbage','MultiBinary']:
+        if which in ['Garbage','MultiBinary']:
             final_layer_bias = True
-
+        # assert False, f"{final_layer_bias} {args.approach}"
         if 'LeNet_plus_plus' in args.arch:
             arch_name = 'LeNet_plus_plus'
         elif 'ResNet_18' in args.arch:
@@ -70,9 +49,8 @@ def load_network(args, config, which, num_classes):
             arch_name = None
 
         net = architectures.__dict__[arch_name](use_BG=which=="Garbage",
-                                                force_fc_dim=config.arch.force_fc_dim,
                                                 num_classes=num_classes,
-                                                final_layer_bias=final_layer_bias)
+                                                final_layer_bias=final_layer_bias,)
         checkpoint = torch.load(network_file, map_location=torch.device('cpu')) 
 
         if config.need_sync:
@@ -157,6 +135,18 @@ def eval_pred_save(pred_results:dict, root:str, save_feats=True):
                 numpy.save(os.path.join(root, f'{key}_{pred_name[i]}.npy'), arr)
     
     print(f"Prediction Saved Successfully!\n{root}\n")
+
+def oscr_save(ccr:list, fpr_neg:list, fpr_unkn:list, root:str):
+
+    if not os.path.exists(root):
+        os.makedirs(root)
+        print(f"Folder '{root}' created successfully.")
+
+    numpy.save(os.path.join(root, 'ccr.npy'), ccr)
+    numpy.save(os.path.join(root, 'fpr_neg.npy'), fpr_neg)
+    numpy.save(os.path.join(root, 'fpr_unkn.npy'), fpr_unkn)
+
+    print(f"OSCR Data Saved Successfully!\n{root}\n")
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
