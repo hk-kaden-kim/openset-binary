@@ -6,6 +6,7 @@ batch_size:
   smallscale: 2048 
   largescale: 256
 pred_save: 1    # Set as '1' if you want to save the prediction results
+oscr_save: 1    # Set as '1' if you want to save the oscr curve data
 need_sync: 0    # Set as '1' if the model is trained with the reference code.
 
 ##########################################
@@ -23,5 +24,5 @@ data:
 # Architecture Parameters
 ##########################################
 arch:
-  model_root: ../../_models # ../../_models_fc_dim_2
-  force_fc_dim: -1 # Set the feature dimensionality on purpose. -1 : feature space dimension == num of classes
+  model_root: ../../_models
+#  force_fc_dim: 1000 # Set the feature dimensionality on purpose. -1 : feature space dimension == num of classes
