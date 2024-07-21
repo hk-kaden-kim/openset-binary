@@ -138,7 +138,7 @@ def evaluate(args, config):
         f"Configuration Details \n"
         f"Model Root: {config.arch.model_root}\n"
         f"Save Predictions: {config.pred_save==1}\n"
-        f"Save Predictions: {config.oscr_save==1}\n"
+        f"Save OSCR results: {config.oscr_save==1}\n"
           )
 
     for which in args.approach:
