@@ -62,14 +62,14 @@ def get_data_and_loss(args, config):
 
     elif args.approach == "MultiBinary":
         training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
-        if config.loss.mbc.weight_global:
+        if config.loss.mbc.option == 'moon' and config.loss.mbc.moon_weight_global:
             gt_labels = dataset.get_gt_labels(training_data)
         else:
             gt_labels = None
-        loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, 
-                                           weight_global=config.loss.mbc.weight_global, 
-                                           weigith_init_val = config.loss.mbc.weight_init_val, 
-                                           unknown_multiplier=config.loss.mbc.unkn_weight)
+        loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, loss_config=config.loss.mbc)
+                                        #    weight_global=config.loss.mbc.moon_weight_global, 
+                                        #    weigith_init_val = config.loss.mbc.moon_weight_init_val, 
+                                        #    unknown_multiplier=config.loss.mbc.moon_unkn_weight)
 
     return dict(
                 loss_func=loss_func,
@@ -200,15 +200,16 @@ def train(args, config):
                 train_confidence += losses.confidence(logits, y)
             if args.approach in ("EOS", "Objectosphere"):
                 train_magnitude += losses.sphere(features, y, args.Minimum_Knowns_Magnitude if args.approach in args.approach == "Objectosphere" else None)
+            # print(logits)
             # assert False, f"{loss}"
-            # loss_history.extend(loss.tolist())
-            # loss.mean().backward()
+
             loss_history.append(loss)
             loss.backward()
             optimizer.step()
 
             # i+=1
-            # assert i < 3, f"FLAG!"
+            # print(loss)
+            # assert i < 10, f"FLAG!"
         
         # metrics on validation set
         with torch.no_grad():

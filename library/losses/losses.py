@@ -1,4 +1,5 @@
 import torch
+import torchvision
 from torch.nn import functional as F
 from .. import tools
 
@@ -49,20 +50,32 @@ def calc_MOON_weights(num_of_classes, labels, init_val=1, is_verbose=False):
 
 class multi_binary_loss:
 
-    def __init__(self, num_of_classes=10, gt_labels=None, weight_global=True, weigith_init_val = 1, unknown_multiplier=1, ):
+    def __init__(self, num_of_classes=10, gt_labels=None, loss_config=None,):
+                #  moon_weight_global=True, moon_weigith_init_val = 1, moon_unknown_multiplier=1, ):
 
         self.num_of_classes = num_of_classes
-        self.weight_global = weight_global
-        self.weigith_init_val = weigith_init_val
-        self.unknown_multiplier = unknown_multiplier
+        self.loss_config = loss_config
 
-        if self.weight_global:
-            print(f"Loss weights are calculated globally.")
-            self.glob_pos_weights, self.glob_neg_weights = calc_MOON_weights(self.num_of_classes, gt_labels, self.weigith_init_val, is_verbose=True)
-            # self.glob_pos_weights, self.glob_neg_weights = torch.ones((num_of_classes,)), torch.ones((num_of_classes,)) 
+        if self.loss_config.option == 'moon':
+            print(f"Using Multi-Binary Classifier Loss with MOON Paper Version.")
+            self.weight_global = loss_config.moon_weight_global
+            self.weigith_init_val = loss_config.moon_weigith_init_val
+            self.unknown_multiplier = loss_config.moon_unknown_multiplier
+            if self.weight_global:
+                print(f"Loss weights are calculated globally.")
+                self.glob_pos_weights, self.glob_neg_weights = calc_MOON_weights(self.num_of_classes, gt_labels, self.weigith_init_val, is_verbose=True)
+                # self.glob_pos_weights, self.glob_neg_weights = torch.ones((num_of_classes,)), torch.ones((num_of_classes,)) 
+            else:
+                print(f"Loss weights will be calculated in every batch.")
+                self.glob_pos_weights, self.glob_neg_weights = None, None
+        
+        elif self.loss_config.option == 'focal':
+            print(f"Using Multi-Binary Classifier Loss with Focal Loss Version.")
+            self.alpha = loss_config.focal_alpha
+            self.gamma = loss_config.focal_gamma
+        
         else:
-            print(f"Loss weights will be calculated in every batch.")
-            self.glob_pos_weights, self.glob_neg_weights = None, None
+            print(f"Using the nomal version of Multi-Binary Classifier Loss.")
 
     @tools.loss_reducer
     def __call__(self, logit_values, target_labels):
@@ -73,33 +86,40 @@ class multi_binary_loss:
         # Calculate probabilities for each sample
         all_probs = F.sigmoid(logit_values)
 
-        # Approach 1. MOON : Weighting by source and target element distribution.
-        # Get positive or negative weights for each classifer
-        if self.weight_global:
-            pos_weights, neg_weights = self.glob_pos_weights, self.glob_neg_weights
-        else:
-            pos_weights, neg_weights = calc_MOON_weights(self.num_of_classes, target_labels, self.weigith_init_val, is_verbose=False)
+
+        if self.loss_config.option == 'moon':
+            # Approach 1. MOON : Weighting by source and target element distribution.
+            # Get positive or negative weights for each classifer
+            if self.weight_global:
+                pos_weights, neg_weights = self.glob_pos_weights, self.glob_neg_weights
+            else:
+                pos_weights, neg_weights = calc_MOON_weights(self.num_of_classes, target_labels, self.weigith_init_val, is_verbose=False)
+            
+            # Create weight matrix for each sample
+            weights = torch.where(all_target==1, pos_weights, neg_weights)
+
+            # Multiply additional unknown sample weight
+            for idx, t in enumerate(target_labels):
+                if t == -1: # Check unknown samples
+                    weights[idx] = weights[idx] * self.unknown_multiplier
+
+            # assign newly created tensor to gpu if cuda is available
+            if torch.cuda.is_available():
+                gpu = all_probs.get_device()
+                weights = weights.to(gpu)
+
+            all_loss = F.binary_cross_entropy(all_probs, all_target, weights)
         
-        # Create weight matrix for each sample
-        weights = torch.where(all_target==1, pos_weights, neg_weights)
+        elif self.loss_config.option == 'focal':
+            # Approach 2. Focal Loss : More weight on high confidence FN and less weight on low confidence TN.
+            all_loss = torchvision.ops.sigmoid_focal_loss(logit_values, all_target,
+                                                          alpha=self.loss_config.focal_alpha,
+                                                          gamma=self.loss_config.focal_gamma,
+                                                          reduction='mean')
 
-        # Multiply additional unknown sample weight
-        for idx, t in enumerate(target_labels):
-            if t == -1: # Check unknown samples
-                weights[idx] = weights[idx] * self.unknown_multiplier
-
-
-        # print(pos_weights)
-        # print(neg_weights)
-        # print(target_labels[:5])
-        # print(weights[:5,:])
-
-        # assign newly created tensor to gpu if cuda is available
-        if torch.cuda.is_available():
-            gpu = all_probs.get_device()
-            weights = weights.to(gpu)
-
-        all_loss = F.binary_cross_entropy(all_probs, all_target, weights)
+        else:
+            # Base : Simple use of binary cross entropy loss.
+            all_loss = F.binary_cross_entropy(all_probs, all_target)
 
         return all_loss
 

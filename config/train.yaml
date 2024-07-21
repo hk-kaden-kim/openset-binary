@@ -20,7 +20,7 @@ data:
   largescale:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
-    level: 1 # 1 2 3
+    level: 3 # 1 2 3
 
 ##########################################
 # Architecture Parameters
@@ -35,9 +35,12 @@ loss:
   eos:
     unkn_weight: 1
   mbc:
-    weight_global: True
-    weight_init_val: 1
-    unkn_weight: 1
+    option: 'focal' # moon, focal
+    moon_weight_global: True
+    moon_weight_init_val: 1
+    moon_unkn_weight: 1
+    focal_alpha: 0.25
+    focal_gamma: 2
 
 ##########################################
 # Optimizer Parameters
