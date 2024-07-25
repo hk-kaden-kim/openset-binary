@@ -36,7 +36,8 @@ def load_network(args, config, which, num_classes):
 
         # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
         final_layer_bias = False 
-        if which in ['Garbage','MultiBinary']:
+        if which in ['MultiBinary']:    # Garbage
+        # if True:    # Garbage
             final_layer_bias = True
         # assert False, f"{final_layer_bias} {args.approach}"
         if 'LeNet_plus_plus' in args.arch:

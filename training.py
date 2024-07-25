@@ -114,7 +114,8 @@ def train(args, config):
     # instantiate network and data loader
     # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
     final_layer_bias = False 
-    if args.approach in ['Garbage','MultiBinary']:
+    if args.approach in ['MultiBinary']:    # 'Garbage'
+    # if True:
         final_layer_bias = True
 
     if 'LeNet_plus_plus' in args.arch:
