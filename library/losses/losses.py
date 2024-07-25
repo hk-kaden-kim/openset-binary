@@ -51,7 +51,6 @@ def calc_MOON_weights(num_of_classes, labels, init_val=1, is_verbose=False):
 class multi_binary_loss:
 
     def __init__(self, num_of_classes=10, gt_labels=None, loss_config=None,):
-                #  moon_weight_global=True, moon_weigith_init_val = 1, moon_unknown_multiplier=1, ):
 
         self.num_of_classes = num_of_classes
         self.loss_config = loss_config
@@ -59,8 +58,8 @@ class multi_binary_loss:
         if self.loss_config.option == 'moon':
             print(f"Using Multi-Binary Classifier Loss with MOON Paper Version.")
             self.weight_global = loss_config.moon_weight_global
-            self.weigith_init_val = loss_config.moon_weigith_init_val
-            self.unknown_multiplier = loss_config.moon_unknown_multiplier
+            self.weigith_init_val = loss_config.moon_weight_init_val
+            self.unkn_weight = loss_config.moon_unkn_weight
             if self.weight_global:
                 print(f"Loss weights are calculated globally.")
                 self.glob_pos_weights, self.glob_neg_weights = calc_MOON_weights(self.num_of_classes, gt_labels, self.weigith_init_val, is_verbose=True)
@@ -101,7 +100,7 @@ class multi_binary_loss:
             # Multiply additional unknown sample weight
             for idx, t in enumerate(target_labels):
                 if t == -1: # Check unknown samples
-                    weights[idx] = weights[idx] * self.unknown_multiplier
+                    weights[idx] = weights[idx] * self.unkn_weight
 
             # assign newly created tensor to gpu if cuda is available
             if torch.cuda.is_available():
