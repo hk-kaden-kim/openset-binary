@@ -174,8 +174,11 @@ def plotter_2D(
             labelright=False,
         )
         ax.axis("equal")
-
-    fig.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
+    try:
+        fig.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
+    except Exception as error:
+        print("An exception occurred:", error)
+        # fig.savefig(file_name.format("2D_plot", "pdf"), bbox_inches="tight")
     fig.show()
     if neg_features is not None:
         plot_histogram(
@@ -188,85 +191,6 @@ def plotter_2D(
         )
 
     plt.close()
-
-# def sigmoid_2D_plotter(
-#     pos_features,
-#     labels,
-#     neg_features=None,
-#     pos_labels="Knowns",
-#     neg_labels="Unknowns",
-#     title=None,
-#     file_name="{}.{}",
-#     final=False,
-#     pred_weights=None,
-#     heat_map=False,
-# ):
-#     plt.figure(figsize=[6, 6])
-
-#     if heat_map:
-#         min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
-#         min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-#         x = np.linspace(min_x * 1.5, max_x * 1.5, 200)
-#         y = np.linspace(min_y * 1.5, max_y * 1.5, 200)
-#         pnts = list(itertools.chain(itertools.product(x, y)))
-#         pnts = np.array(pnts)
-
-#         e_ = np.exp(np.dot(pnts, pred_weights))
-#         e_ = e_ / np.sum(e_, axis=1)[:, None]
-#         res = np.max(e_, axis=1)
-
-#         plt.pcolor(x, y, np.array(res).reshape(200, 200).transpose(), rasterized=True)
-
-#     colors = colors_global
-#     if neg_features is not None:
-#         # Remove black color from knowns
-#         colors = colors_global[:-1]
-
-#     colors_with_repetition = colors.tolist()
-#     for i in range(10):
-#         plt.scatter(
-#             pos_features[labels == i, 0],
-#             pos_features[labels == i, 1],
-#             c=colors_with_repetition[i],
-#             edgecolors="none",
-#             s=1.0 - (i / 10),
-#         )
-#     if neg_features is not None:
-#         plt.scatter(
-#             neg_features[:, 0],
-#             neg_features[:, 1],
-#             c="k",
-#             edgecolors="none",
-#             s=15,
-#             marker="*",
-#         )
-#     if final:
-#         plt.gca().spines["right"].set_position("zero")
-#         plt.gca().spines["bottom"].set_position("zero")
-#         plt.gca().spines["left"].set_visible(False)
-#         plt.gca().spines["top"].set_visible(False)
-#         plt.tick_params(
-#             axis="both",
-#             bottom=False,
-#             left=False,
-#             labelbottom=False,
-#             labeltop=False,
-#             labelleft=False,
-#             labelright=False,
-#         )
-#         plt.axis("equal")
-
-#     plt.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
-#     plt.show()
-#     if neg_features is not None:
-#         plot_histogram(
-#             pos_features,
-#             neg_features,
-#             pos_labels=pos_labels,
-#             neg_labels=neg_labels,
-#             title=title,
-#             file_name=file_name.format("hist", "pdf"),
-#         )
 
 
 def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):

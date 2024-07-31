@@ -23,19 +23,18 @@ def transpose(x):
 def get_gt_labels(dataset, batch_size=1024, is_verbose=True):
 
     print(f"Get Ground Truth Labels.")
-    gt_labels = tools.device(torch.Tensor())
-    # gt_labels = []
+    # gt_labels = tools.device(torch.Tensor())
+    gt_labels = []
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
         for (_, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600, disable=not is_verbose):
             y = tools.device(y)
-            # gt_labels.extend(y.tolist())
-            gt_labels = torch.cat((gt_labels, y))
+            gt_labels.extend(y.tolist())
+            # gt_labels = torch.cat((gt_labels, y))
 
     gt_labels = tools.device(torch.Tensor(gt_labels))
-    # print(gt_labels.shape)
-    # assert False, 'STOP!'
+
     return gt_labels
 
 
