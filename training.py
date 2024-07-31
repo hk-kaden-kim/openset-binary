@@ -36,7 +36,7 @@ def command_line_options():
 
     return parser.parse_args()
 
-def get_data_and_loss(args, config):
+def get_data_and_loss(args, config, epochs):
     """...TBD..."""
 
     if args.scale == 'SmallScale':
@@ -62,11 +62,14 @@ def get_data_and_loss(args, config):
 
     elif args.approach == "MultiBinary":
         training_data, val_data, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
-        if config.loss.mbc.option == 'moon' and config.loss.mbc.moon_weight_global:
+        gt_labels = None
+
+        is_global = [config.loss.mbc.option == 'moon' and config.loss.mbc.moon_weight_global,
+                     config.loss.mbc.option == 'mining' and config.loss.mbc.mining_dist_global]
+
+        if sum(is_global):
             gt_labels = dataset.get_gt_labels(training_data)
-        else:
-            gt_labels = None
-        loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, loss_config=config.loss.mbc)
+        loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, loss_config=config.loss.mbc, epochs=epochs)
                                         #    weight_global=config.loss.mbc.moon_weight_global, 
                                         #    weigith_init_val = config.loss.mbc.moon_weight_init_val, 
                                         #    unknown_multiplier=config.loss.mbc.moon_unkn_weight)
@@ -98,7 +101,7 @@ def train(args, config):
     torch.manual_seed(seed)
 
     # get training data and loss function(s)
-    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config).items()))[-1]
+    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config, epochs).items()))[-1]
 
     results_dir = pathlib.Path(f"{args.scale}/{args.arch}/{args.approach}")
     
@@ -191,7 +194,10 @@ def train(args, config):
             logits, features = net(x)
             
             # first loss is always computed, second loss only for some loss functions
-            loss = loss_func(logits, y)
+            if args.approach in ("MultiBinary"):
+                loss = loss_func(logits, y, epoch)
+            else:
+                loss = loss_func(logits, y)
 
             # metrics on training set
             train_accuracy += losses.accuracy(logits, y)
@@ -202,7 +208,6 @@ def train(args, config):
             if args.approach in ("EOS", "Objectosphere"):
                 train_magnitude += losses.sphere(features, y, args.Minimum_Knowns_Magnitude if args.approach in args.approach == "Objectosphere" else None)
             # print(logits)
-            # assert False, f"{loss}"
 
             loss_history.append(loss)
             loss.backward()
@@ -226,7 +231,10 @@ def train(args, config):
                 y = tools.device(y)
                 logits, features = net(x)
                 
-                loss = loss_func(logits, y)
+                if args.approach in ("MultiBinary"):
+                    loss = loss_func(logits, y, epoch)
+                else:
+                    loss = loss_func(logits, y)
 
                 # metrics on validation set
                 val_loss += torch.tensor((loss * len(y), len(y)))
@@ -267,7 +275,6 @@ def train(args, config):
               f"confidence {val_confidence[0] / val_confidence[1]:.5f} "
               f"magnitude {val_magnitude[0] / val_magnitude[1] if val_magnitude[1] else -1:.5f} -- "
               f"Saving Model {save_status}")
-        # assert False, f"FLAG!"
 
         if lr_decay > 0:
             scheduler.step()

@@ -19,7 +19,7 @@ def target_encoding(target, num_of_classes, init=0, kn_target=1):
     for t in target:
         enc_t = [init] * num_of_classes
         if t > -1:
-            enc_t[t] = kn_target
+            enc_t[int(t)] = kn_target
         enc_target.append(enc_t)
         
     if torch.cuda.is_available():
