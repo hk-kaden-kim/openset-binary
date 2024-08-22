@@ -34,7 +34,7 @@ def get_gt_labels(dataset, batch_size=1024, is_verbose=True):
             # gt_labels = torch.cat((gt_labels, y))
 
     gt_labels = tools.device(torch.Tensor(gt_labels))
-
+    print()
     return gt_labels
 
 

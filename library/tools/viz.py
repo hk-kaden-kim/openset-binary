@@ -86,7 +86,8 @@ def plot_histogram(
     if file_name:
         plt.savefig(file_name.format("Hist", "pdf"), bbox_inches="tight")
     plt.show()
-
+    plt.close()
+    
 def plotter_2D(
     pos_features,
     labels,
@@ -226,3 +227,5 @@ def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
             filename = f"{filename}.pdf"
         fig.savefig(f"{filename}", bbox_inches="tight")
     plt.show()
+
+    plt.close()
