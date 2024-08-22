@@ -17,21 +17,26 @@ from ..tools import device, set_device_cpu, get_device, print_table
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
     
-def load_network(args, config, which, num_classes):
+def load_network(args, config, which, num_classes, seed=-1):
 
-    network_file = os.path.join(config.arch.model_root, f"{args.scale}/{args.arch}/{which}")
-    
+    if seed == -1:
+        network_file = os.path.join(config.arch.model_root, f"{args.scale}/{args.arch}/{which}")
+    else:
+        network_file = os.path.join(config.arch.model_root, f"{args.scale}/_s{seed}/{args.arch}/{which}")
+
     # if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
     #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
 
     if config.data.largescale.level > 1 and args.scale == 'LargeScale':
         network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
+    
 
     if config.need_sync:
         network_file = os.path.join(network_file, f"{which}.pth")
     else:
         network_file = os.path.join(network_file, f"{which}.model")
 
+    print(network_file)
     if os.path.exists(network_file):
 
         # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
@@ -72,7 +77,7 @@ def extract(dataset, net, batch_size=2048, is_verbose=False):
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
     with torch.no_grad():
-        for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600, disable=not is_verbose):
+        for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/3), maxinterval=600, disable=not is_verbose):
             gt.extend(y.tolist())
             logs, feat = net(device(x))
             logits.extend(logs.tolist())
