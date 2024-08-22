@@ -2,293 +2,308 @@ import torch
 import torchvision
 from torch.nn import functional as F
 import numpy as np
-from .schedule import g_poly_convex, g_poly_concav, g_linear, g_composite
+from .schedule import g_convex, g_concave, g_linear, g_composite_1, g_composite_2
 from .. import tools
 
-def calc_mining_dist(target:torch.Tensor):
+PRV_EPOCH = 0
+def get_PRV_EPOCH():
+    return PRV_EPOCH
+def set_PRV_EPOCH(epoch):
+    global PRV_EPOCH
+    PRV_EPOCH = epoch
 
-    c_dist = []
-    for c in range(target.shape[1]):
-        if target[:,c].sum() == 0: # No positives
-            c_dist.append([torch.tensor(0)] * 3)
-            continue
-        try:
-            _, (neg_cnt, pos_cnt) = torch.unique(target[:,c], return_counts=True)
-        except:
-            assert False, f"{torch.unique(target[:,c], return_counts=True)} {c}"
-        ratio = neg_cnt/pos_cnt     # S- / S+
-        c_dist.append([ratio, neg_cnt, pos_cnt])
+
+def calc_class_cnt(num_of_classes, labels, is_verbose=False):
+
+    all_counts = len(labels) 
+    pos_cnts = torch.Tensor([0]*num_of_classes)
+
+    # get each known label counts = positives
+    labels = labels[labels != -1]
+    u_labels, cnts = labels.unique(return_counts=True)
+    u_labels = u_labels.to(torch.int)
+
+    for idx, l in enumerate(u_labels):
+        pos_cnts[l] = cnts[idx]
+    pos_cnts = pos_cnts.to(torch.int)
     
-    return torch.Tensor(c_dist)
+    if is_verbose:
+        tools.print_table(u_labels.cpu().numpy(), pos_cnts.cpu().numpy())
 
-def get_weights_k_hard_neg_mining_3(probs:torch.Tensor, target:torch.Tensor, c_dist:torch.Tensor, alpha, epoch, epochs, schedule='None'):
+    # get other label counts : negatives
+    neg_cnts = all_counts - pos_cnts
 
-    # If it is scheduled
-    if schedule == 'linear':
-        alpha = 1 - g_linear(epoch, epochs)
-    elif schedule == 'convex':
-        alpha = 1 - g_poly_concav(epoch, epochs)
-    elif schedule == 'concave':
-        alpha = 1 - g_poly_convex(epoch, epochs)
-    elif schedule == 'composite':
-        alpha = 1 - g_composite(epoch, epochs)
+    return tools.device(pos_cnts), tools.device(neg_cnts)
 
-    # Replace Prob. of Positives to -1 for easy process
-    neg_probs = torch.where(target!=1, probs, -1) 
+def calc_class_ratio(num_of_classes, labels, init_val=1, is_verbose=False):
 
-    # Create masking of the mining result
-    k_mask = torch.zeros(neg_probs.shape, device=tools.get_device())
-    for c in range(target.shape[1]):
-        ratio, neg_cnt, pos_cnt = c_dist[c,:]
+    # initialize
+    pos_ratio = torch.Tensor([init_val]*num_of_classes)
+    neg_ratio = torch.Tensor([init_val]*num_of_classes)
 
-        if pos_cnt == 0: # No positives
-            k_mask[:,c] = 1
-            continue
+    # get the source distribution
+    pos_cnts, neg_cnts = calc_class_cnt(num_of_classes, labels, is_verbose)
 
-        c_k = int((ratio ** (alpha)) * pos_cnt)     # Get alpha for classifier c
-        if c_k < neg_cnt:   # Mining Hard Negatives only If # of mining sample is smaller than # of negatives
-            c_k_indices = torch.topk(neg_probs[:,c], c_k).indices
-            k_mask[c_k_indices, c] = 1
+    # u_label, pos_src_cnt = labels.unique(return_counts=True)
+    # u_label, pos_src_cnt = u_label.to(torch.int), pos_src_cnt.to(torch.int)
+    # if is_verbose:
+    #     tools.print_table(u_label.cpu().numpy(), pos_src_cnt.cpu().numpy())
+
+    # if -1 in u_label:
+    #     u_label, pos_src_cnt = u_label[1:], pos_src_cnt[1:]
+    # neg_src_cnt = counts - pos_src_cnt
+
+    # get positive and negative ratios
+    # if there is no positive samples for the class in the batch, 0 weighted for all samples in this class.
+    for i, p_cnt in enumerate(pos_cnts):
+        n_cnt = neg_cnts[i]
+        if n_cnt > p_cnt:
+            pos_ratio[i] = 1
+            neg_ratio[i] = p_cnt/n_cnt
         else:
-            k_mask[:,c] = 1
+            pos_ratio[i] = n_cnt/p_cnt
+            neg_ratio[i] = 1
 
-    weights = torch.where(torch.logical_or(target==1, k_mask==1), 1, 0)
-    return weights
+    if is_verbose:
+        print(f"Positive Ratio:\n{pos_ratio}")
+        print(f"Negative Ratio:\n{neg_ratio}")
+        print()
 
-# def get_weights_k_hard_neg_mining_2(probs:torch.Tensor, target:torch.Tensor, alpha, epoch, epochs, schedule='None'):
+    return tools.device(pos_ratio), tools.device(neg_ratio)
 
-#     # If it is scheduled
-#     if schedule == 'linear':
-#         alpha = 1 - g_linear(epoch, epochs)
-#     elif schedule == 'convex':
-#         alpha = 1 - g_poly_concav(epoch, epochs)
-#     elif schedule == 'concave':
-#         alpha = 1 - g_poly_convex(epoch, epochs)
-#     elif schedule == 'composite':
-#         alpha = 1 - g_composite(epoch, epochs)
+def get_class_weights(pos_ratio, neg_ratio, labels, enc_labels, unkn_weight, epoch, epochs, schedule='None'):
 
-#     # Replace Prob. of Positives to -1 for easy process
-#     neg_probs = torch.where(target!=1, probs, -1) 
-
-#     # Get k_mask
-#     k_mask = torch.zeros(neg_probs.shape, device=tools.get_device())
-#     for c in range(target.shape[1]):
-#         if target[:,c].sum() == 0: # No positives
-#             k_mask[:,c] = 1
-#             continue
-#         try:
-#             _, (neg_cnt, pos_cnt) = torch.unique(target[:,c], return_counts=True)
-#         except:
-#             assert False, f"{torch.unique(target[:,c], return_counts=True)} {c}"
-#         ratio = neg_cnt/pos_cnt     # S- / S+
-
-#         c_k = int((ratio ** (alpha)) * pos_cnt)     # Get alpha for classifier c
-#         if c_k < neg_cnt:   # Mining Hard Negatives only If alpha is greater than the number of negatives
-#             c_k_indices = torch.topk(neg_probs[:,c], c_k).indices
-#             k_mask[c_k_indices, c] = 1
-#         else:
-#             k_mask[:,c] = 1
-
-#     weights = torch.where(torch.logical_or(target==1, k_mask==1), 1, 0)
-
-#     return weights
-
-# def get_weights_k_hard_neg_mining(probs, target, alpha):
-
-#     # Replace Prob. of Positives to -1 for easy process
-#     neg_probs = torch.where(target!=1, probs, -1) 
-
-#     # Pick alpha hard negative samples' indices by each class classifier
-#     if neg_probs.shape[0] < alpha:
-#         alpha = neg_probs.shape[0] # Just in case the last batch has less than alpha samples.
-#     try:
-#         k_mining_indices = torch.topk(neg_probs, alpha, dim=0).indices
-#     except:
-#         print(neg_probs.shape, alpha)
-#         assert False, "Error!"
-
-#     # Create a mask for hard negative mining result
-#     k_mining_mask = torch.zeros(target.shape, device=tools.get_device())
-#     for c, idx in enumerate(k_mining_indices.T):
-#         k_mining_mask[idx, c] = 1
-
-#     weights = torch.where(torch.logical_or(target==1, k_mining_mask==1), 1, 0)
-
-#     return weights
-
-def get_weights_moon(pos_weights, neg_weights, target, enc_target, unkn_weight, epoch, epochs, schedule='None'):
-
-    # If it is scheduled
     if schedule == 'linear':
-        pos_weights = pos_weights ** g_linear(epoch, epochs)
-        neg_weights = neg_weights ** g_linear(epoch, epochs)
+        pos_ratio = torch.stack([g_linear(epoch, 1, w, 1, epochs) for w in pos_ratio]).view(-1)
+        neg_ratio = torch.stack([g_linear(epoch, 1, w, 1, epochs) for w in neg_ratio]).view(-1)
     elif schedule == 'convex':
-        pos_weights = pos_weights ** g_poly_convex(epoch, epochs)
-        neg_weights = neg_weights ** g_poly_convex(epoch, epochs)
+        pos_ratio = torch.stack([g_convex(epoch, 1, w, 1, epochs) for w in pos_ratio]).view(-1)
+        neg_ratio = torch.stack([g_convex(epoch, 1, w, 1, epochs) for w in neg_ratio]).view(-1)
     elif schedule == 'concave':
-        pos_weights = pos_weights ** g_poly_concav(epoch, epochs)
-        neg_weights = neg_weights ** g_poly_concav(epoch, epochs)
-    elif schedule == 'composite':
-        pos_weights = pos_weights ** g_composite(epoch, epochs)
-        neg_weights = neg_weights ** g_composite(epoch, epochs)
+        pos_ratio = torch.stack([g_concave(epoch, 1, w, 1, epochs) for w in pos_ratio]).view(-1)
+        neg_ratio = torch.stack([g_concave(epoch, 1, w, 1, epochs) for w in neg_ratio]).view(-1)
+    elif schedule == 'composite_1':
+        pos_ratio = torch.stack([g_composite_1(epoch, 1, w, 1, epochs) for w in pos_ratio]).view(-1)
+        neg_ratio = torch.stack([g_composite_1(epoch, 1, w, 1, epochs) for w in neg_ratio]).view(-1)
+    elif schedule == 'composite_2':
+        pos_ratio = torch.stack([g_composite_2(epoch, 1, w, 1, epochs) for w in pos_ratio]).view(-1)
+        neg_ratio = torch.stack([g_composite_2(epoch, 1, w, 1, epochs) for w in neg_ratio]).view(-1)
 
     # Create weight matrix for each sample
-    weights = torch.where(enc_target==1, pos_weights, neg_weights)
+    weights = torch.where(enc_labels==1, pos_ratio, neg_ratio)
 
     # Multiply additional unknown sample weight
-    for idx, t in enumerate(target):
+    for idx, t in enumerate(labels):
         if t == -1: # Check unknown samples
             weights[idx] = weights[idx] * unkn_weight
     
     return tools.device(weights)
 
-def calc_moon_weights(num_of_classes, labels, init_val=1, is_verbose=False):
+def get_mining_mask(logits, enc_labels, pos_cnts, neg_cnts, alpha, epoch, epochs, schedule='None'):
 
-    # initialize
-    counts = len(labels) 
-    pos_weights = torch.empty(num_of_classes).fill_(init_val)
-    neg_weights = torch.empty(num_of_classes).fill_(init_val)
+    # Leave probabilities only for negative samples
+    neg_probs = torch.where(enc_labels!=1, F.sigmoid(logits), -1)
 
-    # get the source distribution
-    u_label, pos_src_dist = labels.unique(return_counts=True)
-    u_label, pos_src_dist = u_label.to(torch.int), pos_src_dist.to(torch.int)
-    if is_verbose:
-        tools.print_table(u_label.cpu().numpy(), pos_src_dist.cpu().numpy())
+    # Create masking of the mining result
+    k_mask = torch.zeros(enc_labels.shape)
+    k_mask = tools.device(k_mask)
 
-    if -1 in u_label:
-        u_label, pos_src_dist = u_label[1:], pos_src_dist[1:]
-    neg_src_dist = counts - pos_src_dist
+    for i, p_cnt in enumerate(pos_cnts):
+        n_cnt = neg_cnts[i]
 
-    # set positive weights
-    for i, dist in enumerate(pos_src_dist):
-        if neg_src_dist[i] > dist:
-            pos_weights[u_label[i]] = 1
+        # Mining all negatives if there is no positives
+        if p_cnt == 0:
+            k_mask[:,i] == 1
+            continue
+        
+        # Get k for the mining
+        if schedule == 'linear':
+            c_k = g_linear(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'convex':
+            c_k = g_convex(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'concave':
+            c_k = g_concave(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'composite_1':
+            c_k = g_composite_1(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'composite_2':
+            c_k = g_composite_2(epoch, n_cnt, p_cnt, 1, epochs)
         else:
-            pos_weights[u_label[i]] = (neg_src_dist[i] / dist)
+            c_k = alpha*(n_cnt - p_cnt) + p_cnt      # NEW ...
 
-    # set negative weights
-    for i, dist in enumerate(neg_src_dist):
-        if pos_src_dist[i] > dist:
-            neg_weights[u_label[i]] = 1
-        else:
-            neg_weights[u_label[i]] = (pos_src_dist[i] / dist)
+        # Mining all negatives if k is larger than # of negatives 
+        if c_k > n_cnt:
+            k_mask[:,i] = 1
+            continue
+        
+        # Hard Negative Minings : Negatives with a high probability
+        c_k_idxs = torch.topk(neg_probs[:,i], int(c_k)).indices
+        k_mask[c_k_idxs, i] = 1
 
-    if is_verbose:
-        print(f"Positive Weights:\n{pos_weights}")
-        print(f"Negative Weights:\n{neg_weights}")
-        print()
+    # Get the final masks including all postives and mined negatives
+    mining_mask = torch.where(torch.logical_or(enc_labels==1, k_mask==1), 1, 0)
+    
+    return tools.device(mining_mask)
 
-    return tools.device(pos_weights), tools.device(neg_weights)
+def focal_loss_custom(logits, labels, enc_labels, alpha_pos, alpha_neg, gamma, epoch, epochs, schedule='None', focal_mining=1, focal_mining_schedule='None', reduction='mean'):
+
+    # Reference
+    #   torchvision.ops.sigmoid_focal_loss
+
+    # Get p_t
+    p = torch.sigmoid(logits)
+    ce_loss = F.binary_cross_entropy_with_logits(logits, enc_labels, reduction="none")
+    p_t = p * enc_labels + (1 - p) * (1 - enc_labels)
+
+    # Gamma scheduling
+    if schedule == 'linear':
+        gamma = g_linear(epoch, 0, gamma, 1, epochs)
+    elif schedule == 'convex':
+        gamma = g_concave(epoch, 0, gamma, 1, epochs)
+    elif schedule == 'concave':
+        gamma = g_convex(epoch, 0, gamma, 1, epochs)
+    elif schedule == 'composite_1':
+        gamma = g_composite_2(epoch, 0, gamma, 1, epochs)
+    elif schedule == 'composite_2':
+        gamma = g_composite_1(epoch, 0, gamma, 1, epochs)
+
+    # Get focal loss without class weighting
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    # Variant 1. Get focal loss with class weighting
+    if (torch.concat((alpha_pos, alpha_neg)) != 1).sum() > 0:
+        alpha_t = torch.where(enc_labels==1, alpha_pos, alpha_neg)
+        loss = alpha_t * loss
+
+    # Variant 2. Get focal loss with Hard Negative Mining
+    if focal_mining != 1 or focal_mining_schedule != 'None':
+        pos_cnts, neg_cnts = calc_class_cnt(enc_labels.shape[1], labels)
+        mining_mask = get_mining_mask(logits, enc_labels, pos_cnts, neg_cnts, focal_mining, epoch, epochs, focal_mining_schedule)
+        loss = mining_mask * loss
+
+    # Check reduction option and return loss accordingly
+    if reduction == "none":
+        pass
+    elif reduction == "mean":
+        loss = loss.mean()
+    elif reduction == "sum":
+        loss = loss.sum()
+    else:
+        raise ValueError(
+            f"Invalid Value for arg 'reduction': '{reduction} \n Supported reduction modes: 'none', 'mean', 'sum'"
+        )
+
+    return loss
 
 
 class multi_binary_loss:
 
     def __init__(self, epochs, num_of_classes=10, gt_labels=None, loss_config=None,):
 
+        # Common
         self.num_of_classes = num_of_classes
         self.loss_config = loss_config
         self.schedule = loss_config.schedule
         self.epochs = epochs
-        self.weight_global = loss_config.moon_weight_global
-        self.weigith_init_val = loss_config.moon_weight_init_val
-        self.unkn_weight = loss_config.moon_unkn_weight
-        self.alpha = loss_config.focal_alpha
-        self.gamma = loss_config.focal_gamma
-        self.dist_global = loss_config.mining_dist_global
-        self.alpha = loss_config.mining_alpha
+        self.glob_pos_ratio = None
+        self.glob_neg_ratio = None
 
-        if self.loss_config.option == 'moon':
-            print(f"Using Multi-Binary Classifier Loss with MOON Paper Version.")
-            if self.weight_global:
-                print(f"Loss weights are calculated globally.")
-                self.glob_pos_weights, self.glob_neg_weights = calc_moon_weights(self.num_of_classes, gt_labels, self.weigith_init_val, is_verbose=True)
-            else:
-                print(f"Loss weights will be calculated in every batch.")
-                self.glob_pos_weights, self.glob_neg_weights = None, None
+        # Class-weighting Hyperparameter
+        self.wcls_type = loss_config.wclass_type
+        self.wcls_w_unkn = loss_config.wclass_weight_unkn
+        self.wcls_w_init = 1
 
-            if self.schedule != 'None':
-                print(f"Weights are applied with {self.schedule} scheduling")
+        # Mining Hyperparameter
+        # self.dist_global = loss_config.mining_dist_global     # Not Used
+        self.mining_a = loss_config.mining_alpha
 
-            if self.unkn_weight != 1:
-                print(f"Unknown loss weighting = {self.unkn_weight}")
+        # Focal Hyperparameter
+        self.focal_a = loss_config.focal_alpha
+        self.focal_g = loss_config.focal_gamma
+        self.focal_mining_a = loss_config.focal_mining
+        self.focal_mining_s = loss_config.focal_mining_schedule
         
-        elif self.loss_config.option == 'focal':
-            print(f"Using Multi-Binary Classifier Loss with Focal Loss Version.")
+        # Console output
+        if self.loss_config.option == 'wclass':
+            print(f"BCE Loss & CLASS WEIGHTING !!!")
+            print(f"Unknown Weights : {self.wcls_w_unkn}")
+            print(f"Class Weights : {self.wcls_type}")
+            if self.wcls_type == 'global':
+                self.glob_pos_ratio, self.glob_neg_ratio = calc_class_ratio(num_of_classes, gt_labels, 1, is_verbose=True)
 
         elif self.loss_config.option == 'mining':
-            print(f"Using Hard Negative Mining")
-            if self.dist_global:
-                print(f"# of hard negatives is set globally.")
-                all_target_enc = tools.target_encoding(gt_labels, self.num_of_classes)
-                self.glob_c_dist = calc_mining_dist(all_target_enc)
-                print(f"ratio\tnegatvies\tpositives\n{self.glob_c_dist}")
-            else:
-                print(f"# of hard negatives is set by each batch.")
-                self.glob_num_mining = None
+            print(f"BCE Loss & HARD NEG MINING !!!")
+            print(f"Alpha : {self.mining_a}")
 
-            if self.schedule == 'None':
-                print(f"alpha = {self.alpha}")
-            else:
-                print(f"alpha scheduling : {self.schedule} ")
+        elif self.loss_config.option == 'focal':
+            print(f"BCE Loss -> FOCAL LOSS !!!")
+            print(f"Alpha : {self.focal_a}")
+            print(f"Gamma : {self.focal_g}")
+            if self.focal_a == 'None':
+                self.glob_pos_ratio, self.glob_neg_ratio = tools.device(torch.Tensor([1]*num_of_classes)), tools.device(torch.Tensor([1]*num_of_classes))
+            if self.focal_a == 'global':
+                self.glob_pos_ratio, self.glob_neg_ratio = calc_class_ratio(num_of_classes, gt_labels, 1, is_verbose=True)
+            print(f"Mining Alpha : {self.focal_mining_a}")
+            print(f"Mining Schedule : {self.focal_mining_s}")
+
         else:
-            print(f"Using the nomal version of Multi-Binary Classifier Loss.")
+            print(f"BCE (Baseline)")
 
+        if self.schedule != 'None':
+            print(f"Scheduling : {self.schedule}")
+
+        print()
+        
     @tools.loss_reducer
     def __call__(self, logit_values, target_labels, epoch):
         
         # Encode target values
-        all_target_enc = tools.target_encoding(target_labels, self.num_of_classes)
-
-        # Calculate probabilities for each sample. Shape: [batch_size, # of classes]
-        all_probs = F.sigmoid(logit_values)
+        enc_target_labels = tools.target_encoding(target_labels, self.num_of_classes)
 
         # ------------------------------------------------------
-        # Approach 1. MOON : Weighting by source and target element distribution.
+        # Approach 1. BCE Loss & CLASS WEIGHTING
         # ------------------------------------------------------
-        if self.loss_config.option == 'moon':
+        if self.loss_config.option == 'wclass':
 
             # Get positive or negative weights for each classifer
-            if self.weight_global:
-                pos_weights, neg_weights = self.glob_pos_weights, self.glob_neg_weights
-            else:
-                pos_weights, neg_weights = calc_moon_weights(self.num_of_classes, target_labels, self.weigith_init_val, is_verbose=False)
-            
-            weights = get_weights_moon(pos_weights, neg_weights, target_labels, all_target_enc, self.unkn_weight, epoch, self.epochs, self.schedule)
-            all_loss = F.binary_cross_entropy(all_probs, all_target_enc, weights)
+            pos_ratio, neg_ratio = self.glob_pos_ratio, self.glob_neg_ratio
+            if (pos_ratio == None) and (neg_ratio == None):
+                pos_ratio, neg_ratio = calc_class_ratio(self.num_of_classes, target_labels, self.wcls_w_init, is_verbose=False)
+
+            weights = get_class_weights(pos_ratio, neg_ratio, target_labels, enc_target_labels, self.wcls_w_unkn, epoch, self.epochs, self.schedule)
+
+            all_loss = F.binary_cross_entropy_with_logits(logit_values, enc_target_labels, weights)
 
         # ------------------------------------------------------
-        # Approach 2. Focal Loss : More weight on high confidence FN and less weight on low confidence TN.
-        # ------------------------------------------------------
-        elif self.loss_config.option == 'focal':
-
-            # Calculate Focal Loss
-            all_loss = torchvision.ops.sigmoid_focal_loss(logit_values, all_target_enc,
-                                                          alpha=self.alpha,
-                                                          gamma=self.gamma,
-                                                          reduction='mean')
-        
-        # ------------------------------------------------------
-        # Approach 3. Hard Negative Mining : ...
+        # Approach 2. BCE Loss & HARD NEG MINING
         # ------------------------------------------------------
         elif self.loss_config.option == 'mining':
 
-            # Create a weight matrix to conisder samples either all positives or alpha hard negatives.
-            if self.dist_global:
-                c_dist = calc_mining_dist(all_target_enc)
-                c_dist[:,0] = self.glob_c_dist[:,0] # Keep only global level neg/pos ratio
-            else:
-                c_dist = calc_mining_dist(all_target_enc)
-            # weights = get_weights_k_hard_neg_mining(all_probs, all_target_enc, self.topk)
-            # weights = get_weights_k_hard_neg_mining_2(all_probs, all_target_enc, self.alpha, epoch, self.epochs, self.schedule)
-            weights = get_weights_k_hard_neg_mining_3(all_probs, all_target_enc, c_dist, self.alpha, epoch, self.epochs, self.schedule)
-            all_loss = F.binary_cross_entropy(all_probs, all_target_enc, weights) 
+            pos_cnts, neg_cnts = calc_class_cnt(self.num_of_classes, target_labels, is_verbose=False)
+
+            weights = get_mining_mask(logit_values, enc_target_labels, pos_cnts, neg_cnts, self.mining_a, epoch, self.epochs, self.schedule)
+
+            all_loss = F.binary_cross_entropy_with_logits(logit_values, enc_target_labels, weights)
+
+        # ------------------------------------------------------
+        # Approach 3. BCE Loss -> FOCAL LOSS
+        # ------------------------------------------------------
+        elif self.loss_config.option == 'focal':
+
+            alpha_pos, alpha_neg = self.glob_pos_ratio, self.glob_neg_ratio
+            if (alpha_pos == None) and (alpha_neg == None):
+                alpha_pos, alpha_neg = calc_class_ratio(self.num_of_classes, target_labels, self.wcls_w_init, is_verbose=False)
+            
+            all_loss = focal_loss_custom(logit_values, target_labels, enc_target_labels, 
+                                         alpha_pos, alpha_neg, self.focal_g, 
+                                         epoch, self.epochs, self.schedule, 
+                                         focal_mining = self.focal_mining_a, focal_mining_schedule = self.focal_mining_s)
 
         # ------------------------------------------------------
         # (BASE) Approach.
         # ------------------------------------------------------
         else:
             # Base : Simple use of binary cross entropy loss.
-            all_loss = F.binary_cross_entropy(all_probs, all_target_enc)
+            all_loss = F.binary_cross_entropy_with_logits(logit_values, enc_target_labels)
 
         return all_loss
 
