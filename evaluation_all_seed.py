@@ -110,12 +110,12 @@ def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, re
 
     print("Done!\n")
 
-def evaluate(args, config):
+def evaluate(args, config, seed):
 
     # load dataset
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root,
-                              split_ratio = 0.8, seed = 42,
+                              split_ratio = 0.8, seed = seed,
                               convert_to_rgb=args.scale == 'SmallScale' and 'ResNet' in args.arch)
     else:
         data = dataset.IMAGENET(config.data.largescale.root,
@@ -124,7 +124,7 @@ def evaluate(args, config):
 
     # Save or Plot results
     results = {}
-    root = pathlib.Path(f"{args.scale}/eval_{args.arch}")
+    root = pathlib.Path(f"{args.scale}/_s{seed}/eval_{args.arch}")
 
     # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
     #     root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
@@ -171,7 +171,7 @@ def evaluate(args, config):
             unkn_gt_label = -1
         
         # Load weights of the model
-        net = evals.load_network(args, config, which, num_classes)
+        net = evals.load_network(args, config, which, num_classes, seed = seed)
         if net is None:
             print(f"Weights are not loaded on the network!\n{which} Evaluation Terminated\n")
             continue
@@ -293,6 +293,7 @@ if __name__ == '__main__':
         f"Configuration: {args.config} \n"
           )
     
-    evaluate(args, config)
-    print("Evaluation Done!")
+    for s in [42,43,44,45,46,47,48,49,50,51]:
+        evaluate(args, config, s)
+        print("Evaluation Done!\n\n\n")
 

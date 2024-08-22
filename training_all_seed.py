@@ -32,16 +32,17 @@ def command_line_options():
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of training dataset.")
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'Garbage', 'EOS','MultiBinary'])
+    parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
 
-def get_data_and_loss(args, config, epochs):
+def get_data_and_loss(args, config, epochs, seed):
     """...TBD..."""
 
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root, 
-                              split_ratio = config.data.smallscale.split_ratio, seed = config.seed,
+                              split_ratio = config.data.smallscale.split_ratio, seed = seed,
                               convert_to_rgb = args.scale == 'SmallScale' and 'ResNet' in args.arch)
     else:
         data = dataset.IMAGENET(config.data.largescale.root, 
@@ -74,6 +75,7 @@ def get_data_and_loss(args, config, epochs):
 
         loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, loss_config=config.loss.mbc, epochs=epochs)
 
+
     return dict(
                 loss_func=loss_func,
                 training_data = training_data,
@@ -102,15 +104,15 @@ def train(args, config, seed):
     torch.manual_seed(seed)
 
     # get training data and loss function(s)
-    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config, epochs).items()))[-1]
+    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config, epochs, seed).items()))[-1]
 
-    results_dir = pathlib.Path(f"{args.scale}/{args.arch}/{args.approach}")
+    results_dir = pathlib.Path(f"{args.scale}/_s{seed}/{args.arch}/{args.approach}")
     
     # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
     #     results_dir = pathlib.Path(f"{args.scale}_fc_dim_2/{args.arch}/{args.approach}")
 
     if args.scale == 'LargeScale' and config.data.largescale.level > 1:
-        results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/{args.arch}/{args.approach}")
+        results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/_s{seed}/{args.arch}/{args.approach}")
 
     model_file = f"{results_dir}/{args.approach}.model"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -300,7 +302,9 @@ if __name__ == "__main__":
         f"Architecture: {args.arch} \n"
         f"Approach: {args.approach} \n"
         f"Configuration: {args.config} \n"
+        f"Seed: {args.seed}\n"
           )
-        
-    train(args, config, config.seed)
-    print("Training Done!")
+    
+    for s in args.seed:
+        train(args, config, s)
+        print("Training Done!\n\n\n")
