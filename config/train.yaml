@@ -4,9 +4,9 @@
 seed: 42        # Common seed across all source of randomness
 batch_size: 
   smallscale: 128 
-  largescale: 256 # 64    256
+  largescale: 64  # batch size is 64 because of the memory constraint but increase the epochs to 120, then, all data can be seen enough time to the model.
 epochs:
-  smallscale: 70
+  smallscale: 70 # 70
   largescale: 120
 num_workers: 5      # Dataloader number of workers
 
@@ -35,22 +35,21 @@ loss:
   eos:
     unkn_weight: 1
   mbc:
-    option: 'moon' # None, moon, focal, mining
-    schedule: 'None' # None, linear, convex, concave, composite
+    option: 'focal' # None, wclass, mining, focal
+    schedule: 'None' # None, linear, convex, concave, composite_1, composite_2
+
     # ---------------------------------
-    moon_weight_global: False
-    moon_weight_init_val: 1
-    moon_unkn_weight: 1
+    wclass_type: 'batch' # global batch
+    wclass_weight_unkn: 20  # 1 5 10 20 30     # Small 27    # Large 2.6
+
     # ---------------------------------
-    focal_alpha: 0.25
-    focal_gamma: 2
+    mining_alpha:  0.7         # 0(balanced) 0.1 0.3 0.5 0.7 0.9 1(unbalanced)
+
     # ---------------------------------
-    mining_dist_global: True
-    mining_alpha:  0.9
-    # 0.1 0.3 0.5 0.7 0.9     1 means without mining.
-    # (Legacy) -1 which means the same with # of pos. in a batch.
-    # (Legacy) SmallScale: 2, 4, 8, 16, 32, 64. 
-    # (Legacy) LargeScale: 2, 4, 8, 16, 32.
+    focal_alpha: 'None'         # None global batch
+    focal_gamma: 3              # 0(No focal) ~
+    focal_mining: 0.6             # 0(balanced) 0.1 0.3 0.5 0.7 0.9 1(unbalanced)
+    focal_mining_schedule: 'None'     # None, linear, convex, concave, composite_1, composite_2
 
 ##########################################
 # Optimizer Parameters
