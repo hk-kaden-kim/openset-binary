@@ -144,8 +144,7 @@ class EmnistUnknownDataset(torch.utils.data.dataset.Subset):
 class IMAGENET():
     def __init__(self, dataset_root, protocol_root, protocol=1):
         
-        if protocol > 1:
-            print(f"Protocol: {protocol}")
+        print(f"Protocol: {protocol}")
 
         # Set image transformations
         self.train_data_transform = transforms.Compose(
@@ -188,6 +187,7 @@ class IMAGENET():
         
         if not include_negatives:
             train_ds.remove_negative_label()
+            val_ds.remove_negative_label()
         
         if has_background_class:
             train_ds.replace_negative_label()

@@ -105,27 +105,30 @@ def plotter_2D(
     fig, ax = plt.subplots(figsize=(6, 6))
 
     if heat_map:
-        min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
-        min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-        x = np.linspace(min_x * 1.5, max_x * 1.5, 500)
-        y = np.linspace(min_y * 1.5, max_y * 1.5, 500)
-        pnts = list(itertools.chain(itertools.product(x, y)))
-        pnts = np.array(pnts)
+        try:
+            min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
+            min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
+            x = np.linspace(min_x * 1.5, max_x * 1.5, 500)
+            y = np.linspace(min_y * 1.5, max_y * 1.5, 500)
+            pnts = list(itertools.chain(itertools.product(x, y)))
+            pnts = np.array(pnts)
 
-        res = prob_function(pnts, *args, **kwargs)
+            res = prob_function(pnts, *args, **kwargs)
 
-        heat_map = ax.pcolormesh(
-            x,
-            y,
-            np.array(res).reshape(500, 500).transpose(),
-            # cmap='gray',
-            rasterized=True,
-            shading="auto",
-            vmin=0.0,
-            vmax=1.0,
-        )
-        fig.colorbar(heat_map, ax=ax, fraction=0.046, pad=0.04)
-
+            heat_map = ax.pcolormesh(
+                x,
+                y,
+                np.array(res).reshape(500, 500).transpose(),
+                # cmap='gray',
+                rasterized=True,
+                shading="auto",
+                vmin=0.0,
+                vmax=1.0,
+            )
+            fig.colorbar(heat_map, ax=ax, fraction=0.046, pad=0.04)
+        except Exception as error:
+            print("An exception occurred:", error)
+    
     colors = colors_global
     if neg_features is not None:
         # Remove black color from knowns
@@ -182,15 +185,18 @@ def plotter_2D(
         # fig.savefig(file_name.format("2D_plot", "pdf"), bbox_inches="tight")
     fig.show()
     if neg_features is not None:
-        plot_histogram(
-            pos_features,
-            neg_features,
-            pos_labels=pos_labels,
-            neg_labels=neg_labels,
-            title=title,
-            file_name=file_name.format("hist", "pdf"),
-        )
-
+        try:
+            plot_histogram(
+                pos_features,
+                neg_features,
+                pos_labels=pos_labels,
+                neg_labels=neg_labels,
+                title=title,
+                file_name=file_name.format("hist", "pdf"),
+            )
+        except Exception as error:
+            print("An exception occurred:", error)
+            
     plt.close()
 
 
