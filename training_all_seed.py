@@ -29,7 +29,7 @@ def command_line_options():
     )
 
     parser.add_argument("--config", "-cf", default='config/train.yaml', help="The configuration file that defines the experiment")
-    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of training dataset.")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of training dataset.")
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'Garbage', 'EOS','MultiBinary'])
     parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
@@ -47,7 +47,7 @@ def get_data_and_loss(args, config, epochs, seed):
     else:
         data = dataset.IMAGENET(config.data.largescale.root, 
                                 protocol_root = config.data.largescale.protocol, 
-                                protocol = config.data.largescale.level)
+                                protocol = int(args.scale.split('_')[1]))
     
     if args.approach == "SoftMax":
         training_data, val_data, num_classes = data.get_train_set(include_negatives=False, has_background_class=False)
@@ -71,7 +71,7 @@ def get_data_and_loss(args, config, epochs, seed):
         )
 
         if is_global:
-            gt_labels = dataset.get_gt_labels(training_data)
+            gt_labels = dataset.get_gt_labels(training_data, gpu=args.gpu)
 
         loss_func=losses.multi_binary_loss(num_of_classes=num_classes, gt_labels=gt_labels, loss_config=config.loss.mbc, epochs=epochs)
 
@@ -108,11 +108,8 @@ def train(args, config, seed):
 
     results_dir = pathlib.Path(f"{args.scale}/_s{seed}/{args.arch}/{args.approach}")
     
-    # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
-    #     results_dir = pathlib.Path(f"{args.scale}_fc_dim_2/{args.arch}/{args.approach}")
-
-    if args.scale == 'LargeScale' and config.data.largescale.level > 1:
-        results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/_s{seed}/{args.arch}/{args.approach}")
+    # if args.scale == 'LargeScale' and config.data.largescale.level > 1:
+    #     results_dir = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/_s{seed}/{args.arch}/{args.approach}")
 
     model_file = f"{results_dir}/{args.approach}.model"
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -304,7 +301,7 @@ if __name__ == "__main__":
         f"Configuration: {args.config} \n"
         f"Seed: {args.seed}\n"
           )
-    
+
     for s in args.seed:
         train(args, config, s)
         print("Training Done!\n\n\n")
