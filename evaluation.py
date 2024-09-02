@@ -120,7 +120,7 @@ def evaluate(args, config):
     else:
         data = dataset.IMAGENET(config.data.largescale.root,
                                 protocol_root = config.data.largescale.protocol, 
-                                protocol = config.data.largescale.level)
+                                protocol = int(args.scale.split('_')[1]))
 
     # Save or Plot results
     results = {}
@@ -129,8 +129,8 @@ def evaluate(args, config):
     # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
     #     root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
     
-    if args.scale == 'LargeScale' and config.data.largescale.level > 1:
-        root = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/eval_{args.arch}")
+    # if args.scale == 'LargeScale' and config.data.largescale.level > 1:
+    #     root = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")

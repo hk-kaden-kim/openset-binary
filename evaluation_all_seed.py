@@ -35,7 +35,7 @@ def command_line_options():
     )
 
     parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
-    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale'], help="Choose the scale of evaluation dataset.")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
@@ -116,21 +116,15 @@ def evaluate(args, config, seed):
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root,
                               split_ratio = 0.8, seed = seed,
-                              convert_to_rgb=args.scale == 'SmallScale' and 'ResNet' in args.arch)
+                              convert_to_rgb=False)
     else:
         data = dataset.IMAGENET(config.data.largescale.root,
                                 protocol_root = config.data.largescale.protocol, 
-                                protocol = config.data.largescale.level)
+                                protocol = int(args.scale.split('_')[1]))
 
     # Save or Plot results
     results = {}
     root = pathlib.Path(f"{args.scale}/_s{seed}/eval_{args.arch}")
-
-    # if args.scale == 'SmallScale' and config.arch.force_fc_dim == 2:
-    #     root = pathlib.Path(f"{args.scale}_fc_dim_2/eval_{args.arch}")
-    
-    if args.scale == 'LargeScale' and config.data.largescale.level > 1:
-        root = pathlib.Path(f"{args.scale}_{config.data.largescale.level}/eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -293,7 +287,12 @@ if __name__ == '__main__':
         f"Configuration: {args.config} \n"
           )
     
-    for s in [42,43,44,45,46,47,48,49,50,51]:
+    if args.scale == 'SmallScale':
+        seeds = [42,43,44,45,46,47,48,49,50,51]
+        # seeds = [42]
+    else:
+        seeds = [42,43,44,45,46]
+    for s in seeds:
         evaluate(args, config, s)
         print("Evaluation Done!\n\n\n")
 
