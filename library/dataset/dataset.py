@@ -20,9 +20,17 @@ def transpose(x):
     """Used for correcting rotation of EMNIST"""
     return x.transpose(2,1)
 
-def get_gt_labels(dataset, batch_size=1024, is_verbose=True):
+def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=True):
 
-    print(f"Get Ground Truth Labels.")
+    if is_verbose:
+        print(f"Get Ground Truth Labels.")
+    # if gpu is not None and torch.cuda.is_available():
+    #     tools.set_device_gpu(gpu)
+    # else:
+    #     if is_verbose:
+    #         print("Running in CPU mode, might be slow")
+    #     tools.set_device_cpu()
+
     # gt_labels = tools.device(torch.Tensor())
     gt_labels = []
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
@@ -34,8 +42,21 @@ def get_gt_labels(dataset, batch_size=1024, is_verbose=True):
             # gt_labels = torch.cat((gt_labels, y))
 
     gt_labels = tools.device(torch.Tensor(gt_labels))
-    print()
+
     return gt_labels
+
+def calc_class_weight(dataset, batch_size=1024, gpu=None, is_verbose=True):
+    
+    gt_labels = get_gt_labels(dataset, batch_size, gpu, is_verbose)
+    total_num = len(gt_labels)
+    u_labels, cnts = gt_labels.unique(return_counts=True)
+    u_labels = u_labels.to(torch.int)
+
+    c_w = []
+    for l in u_labels:
+        c_w.append(cnts[l]/total_num)
+
+    return tools.device(torch.Tensor(c_w))
 
 
 class EMNIST():
@@ -86,21 +107,25 @@ class EMNIST():
                     )
         
     def get_train_set(self, include_negatives=False, has_background_class=False):
-
+        
+        # Get MNIST for Known samples
         mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
         tr_mnist_idxs, val_mnist_idxs = train_test_split(mnist_idxs, train_size=self.split_ratio, random_state=self.seed)
         tr_mnist, val_mnist = Subset(self.train_mnist, tr_mnist_idxs), Subset(self.train_mnist, val_mnist_idxs)
 
+        # Get Letters for Neg Samples
         letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
         tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=self.split_ratio, random_state=self.seed)
         tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
         tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
 
+        # Create Train and Val Dataset
+        train_emnist = ConcatDataset([tr_mnist])
+        val_emnist = ConcatDataset([val_mnist, val_letters])
+
         if include_negatives:
-            train_emnist, val_emnist = ConcatDataset([tr_mnist, tr_letters]), ConcatDataset([val_mnist, val_letters])
-        else:
-            train_emnist, val_emnist = ConcatDataset([tr_mnist]), ConcatDataset([val_mnist])
+            train_emnist = ConcatDataset([tr_mnist, tr_letters])
 
         return (train_emnist, val_emnist, 10)
 
@@ -187,7 +212,6 @@ class IMAGENET():
         
         if not include_negatives:
             train_ds.remove_negative_label()
-            val_ds.remove_negative_label()
         
         if has_background_class:
             train_ds.replace_negative_label()
