@@ -27,8 +27,8 @@ def load_network(args, config, which, num_classes, seed=-1):
     # if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
     #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
 
-    if config.data.largescale.level > 1 and args.scale == 'LargeScale':
-        network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
+    # if args.scale == 'LargeScale':
+    #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
     
 
     if config.need_sync:

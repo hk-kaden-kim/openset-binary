@@ -13,15 +13,12 @@ class ResNet_18(nn.Module):
 
         if force_fc_dim != -1:
             fc_layer_dim=force_fc_dim
-            print(f"Feature Space Dimension: {fc_layer_dim}\n")
         else:
             fc_layer_dim = num_classes
 
         resnet_base.fc = nn.Linear(in_features=fc_in_features, out_features=fc_layer_dim)
 
         self.fc1 = resnet_base
-        if final_layer_bias:
-            print('Classifier has a bias term.')
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
         
     def forward(self, x):
@@ -40,15 +37,15 @@ class ResNet_50(nn.Module):
 
         if force_fc_dim != -1:
             fc_layer_dim=force_fc_dim
-            print(f"Feature Space Dimension: {fc_layer_dim}\n")
+            # print(f"Feature Space Dimension: {fc_layer_dim}\n")
         else:
             fc_layer_dim = num_classes
 
         resnet_base.fc = nn.Linear(in_features=fc_in_features, out_features=fc_layer_dim)
 
         self.fc1 = resnet_base
-        if final_layer_bias:
-            print('Classifier has a bias term.')
+        # if final_layer_bias:
+        #     print('Classifier has a bias term.')
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
                 
     def forward(self, x):
@@ -126,7 +123,7 @@ class LeNet_plus_plus(nn.Module):
 
         if force_fc_dim != -1:
             fc_layer_dim=force_fc_dim
-            print(f"Feature Space Dimension: {fc_layer_dim}\n")
+            # print(f"Feature Space Dimension: {fc_layer_dim}\n")
         else:
             fc_layer_dim = num_classes
 
@@ -134,8 +131,8 @@ class LeNet_plus_plus(nn.Module):
             in_features=self.conv3_2.out_channels * 3 * 3, out_features=fc_layer_dim, bias=True
         )
 
-        if final_layer_bias:
-            print('Classifier has a bias term.')
+        # if final_layer_bias:
+        #     print('Classifier has a bias term.')
 
         self.fc2 = nn.Linear(in_features=fc_layer_dim, out_features=num_classes, bias=final_layer_bias)
 

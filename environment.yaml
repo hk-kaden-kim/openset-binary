@@ -17,5 +17,6 @@ dependencies:
   - pyyaml
   - pip
   - tensorboard
+  - ray[tune]
   # - pip:
   #     - https://github.com/Vastlab/vast/archive/63-network-architectures-include-bias-neuron-in-the-last-layer.zip
