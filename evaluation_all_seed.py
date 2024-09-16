@@ -4,7 +4,7 @@ import numpy
 import os
 import time 
 
-from library import architectures, tools, evals, dataset
+from library import architectures, tools, evals, dataset, losses
 
 import matplotlib
 matplotlib.rcParams["font.size"] = 18
@@ -23,7 +23,8 @@ labels={
   "SoftMax" : "Plain SoftMax",
   "Garbage" : "Garbage Class",
   "EOS" : "Entropic Open-Set",
-  "MultiBinary" : "Multiple Binary Classifiers",
+  "OvR" : "One-vs-Rest Classifiers",
+  "OpenSetOvR": "Open-Set OvR Classifiers"
 }
 
 def command_line_options():
@@ -38,77 +39,10 @@ def command_line_options():
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
+    parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
     return parser.parse_args()
-
-def deep_features_plot(which, net, unkn_gt_label, pred_results, get_probs_fn, results_dir:pathlib.Path):
-
-    print('Plot Deep Feature Space!')
-    train_gt, _, train_feats, _ = pred_results['train']
-    test_neg_gt, _, test_neg_feats, _ = pred_results['test_neg']
-    test_unkn_gt, _, test_unkn_feats, _ = pred_results['test_unkn']
-
-    # Deep Feature Plotting : Training Samples
-    print("Training Set...")
-    known_tag = train_gt != unkn_gt_label
-    unknown_tag = ~known_tag
-
-    pos_features = train_feats[known_tag]
-    labels = train_gt[known_tag]
-    neg_features = train_feats[unknown_tag]
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=None, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/1_{}_train.{}')
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=None, heat_map=True, 
-                         final=True, file_name=str(results_dir)+'/2_{}_heat_train.{}',
-                         prob_function=get_probs_fn, which=which, net=net, gpu=tools.get_device())
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=neg_features, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
-    print("Done!")
-
-    # Deep Feature Plotting : Testing Samples (+ Negatives)
-    print("Test Set with 'Known Unknown Samples'...")
-    known_tag = test_neg_gt != unkn_gt_label
-    unknown_tag = ~known_tag
-
-    pos_features = test_neg_feats[known_tag]
-    labels = test_neg_gt[known_tag]
-    neg_features = test_neg_feats[unknown_tag]
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=None, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/1_{}_test.{}')
-
-    tools.viz.plotter_2D(pos_features, labels,
-                         neg_features=None, heat_map=True, 
-                         final=True, file_name=str(results_dir)+'/2_{}_heat_test.{}',
-                         prob_function=get_probs_fn, which=which, net=net, gpu=tools.get_device())
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=neg_features, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/3_{}_test_neg.{}'),
-    print("Done!")
-
-    # Deep Feature Plotting : Testing Samples (+ Unknowns)
-    print("Test Set with 'Unknown Unknown Samples'...")
-    known_tag = test_unkn_gt != unkn_gt_label
-    unknown_tag = ~known_tag
-
-    pos_features = test_unkn_feats[known_tag]
-    labels = test_unkn_gt[known_tag]
-    neg_features = test_unkn_feats[unknown_tag]
-
-    tools.viz.plotter_2D(pos_features, labels, 
-                         neg_features=neg_features, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/3_{}_test_unkn.{}')
-
-    print("Done!\n")
 
 def evaluate(args, config, seed):
 
@@ -156,11 +90,11 @@ def evaluate(args, config, seed):
 
         # Load evaluation dataset
         if which == 'Garbage':
-            train_set_neg, _, num_classes = data.get_train_set(include_negatives=True, has_background_class=True)
+            train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=True)
             _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=True)
             unkn_gt_label = num_classes
         else:
-            train_set_neg, _, num_classes = data.get_train_set(include_negatives=True, has_background_class=False)
+            train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
             _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
             unkn_gt_label = -1
         
@@ -184,11 +118,17 @@ def evaluate(args, config, seed):
         print()
 
         # Calculate Probs
-        if which == "MultiBinary":
+        if which == "OvR":
             if args.scale == 'SmallScale':
                 train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
             test_neg_probs = F.sigmoid(torch.tensor(pred_results['test_neg'][1])).detach().numpy()
             test_unkn_probs  = F.sigmoid(torch.tensor(pred_results['test_unkn'][1])).detach().numpy()
+        elif which == 'OpenSetOvR':
+            osovr_act = losses.OpenSetOvR(config.osovr_sigma)
+            if args.scale == 'SmallScale':
+                train_probs = osovr_act(tools.device(torch.tensor(pred_results['train'][1])), net.fc2.weight.data).detach().cpu().numpy()
+            test_neg_probs = osovr_act(tools.device(torch.tensor(pred_results['test_neg'][1])), net.fc2.weight.data).detach().cpu().numpy()
+            test_unkn_probs  = osovr_act(tools.device(torch.tensor(pred_results['test_unkn'][1])), net.fc2.weight.data).detach().cpu().numpy()
         else:
             if args.scale == 'SmallScale':
                 train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
@@ -205,23 +145,21 @@ def evaluate(args, config, seed):
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
-        # # remove the labels for the unknown class in case of Garbage Class
         if config.pred_save:
             evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
 
+        if args.scale == 'SmallScale' and 'LeNet_plus_plus' in args.arch:
+            tools.viz.deep_features_plot(which, net,
+                                         gpu=tools.get_device(), config=config,
+                                         unkn_gt_label=unkn_gt_label, 
+                                         pred_results=pred_results,
+                                         results_dir=results_dir,)
+
+        print('Get OSCR results')
+        # remove the labels for the unknown class in case of Garbage Class
         if which == "Garbage":
             pred_results['test_neg'][-1] = pred_results['test_neg'][-1][:,:-1]
             pred_results['test_unkn'][-1] = pred_results['test_unkn'][-1][:,:-1]
-
-        if args.scale == 'SmallScale':
-            deep_features_plot(which, net, 
-                               results_dir=results_dir, 
-                               unkn_gt_label=unkn_gt_label, 
-                               pred_results=pred_results, 
-                               get_probs_fn=tools.viz.get_probs)
-
-
-        print('Get OSCR results')
         print("Test Set with 'Known Unknown Samples'...")
         ccr, fpr_neg = evals.get_oscr_curve(pred_results['test_neg'][0], pred_results['test_neg'][3]
                                             , unkn_gt_label, at_fpr=None)
@@ -285,14 +223,10 @@ if __name__ == '__main__':
         f"Architecture: {args.arch} \n"
         f"Approach: {args.approach} \n"
         f"Configuration: {args.config} \n"
+        f"Seed: {args.seed}\n"
+        f"---------\nOSOvR Sigma: {config.osovr_sigma}\n"
           )
-    
-    if args.scale == 'SmallScale':
-        seeds = [42,43,44,45,46,47,48,49,50,51]
-        # seeds = [42]
-    else:
-        seeds = [42,43,44,45,46]
-    for s in seeds:
+
+    for s in args.seed:
         evaluate(args, config, s)
         print("Evaluation Done!\n\n\n")
-
