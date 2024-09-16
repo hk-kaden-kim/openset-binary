@@ -4,6 +4,7 @@ import itertools
 from matplotlib import pyplot as plt
 import torch
 from torch.nn import functional as F
+from .. import losses
 
 colors_global = np.array(
     [
@@ -22,15 +23,18 @@ colors_global = np.array(
 )
 # colors_global = colors_global / 255.0
 
-def get_probs(pnts, which, net, gpu=None):
+def get_probs(pnts, which, net, config, gpu=None):
 
     pnts = torch.tensor(pnts).float()
     if gpu is not None and torch.cuda.is_available():
         pnts = pnts.to(f'{gpu}')
 
     result = net.deep_feature_forward(pnts)
-    if which == 'MultiBinary':
+    if which == 'OvR':
         probs = F.sigmoid(result).detach()
+    elif which == 'OpenSetOvR':
+        osovr_act = losses.OpenSetOvR(config.osovr_sigma)
+        probs = osovr_act(result, net.fc2.weight.data).detach()
     else:
         probs = F.softmax(result, dim=1).detach()
     probs = torch.max(probs, dim=1).values
@@ -40,6 +44,73 @@ def get_probs(pnts, which, net, gpu=None):
     
     return probs
 
+def deep_features_plot(which, net, config, gpu, unkn_gt_label, pred_results, results_dir):
+
+    print('Plot Deep Feature Space!')
+    train_gt, _, train_feats, _ = pred_results['train']
+    test_neg_gt, _, test_neg_feats, _ = pred_results['test_neg']
+    test_unkn_gt, _, test_unkn_feats, _ = pred_results['test_unkn']
+
+    # Deep Feature Plotting : Training Samples
+    print("Training Set...")
+    known_tag = train_gt != unkn_gt_label
+    unknown_tag = ~known_tag
+
+    pos_features = train_feats[known_tag]
+    labels = train_gt[known_tag]
+    neg_features = train_feats[unknown_tag]
+    
+    plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/1_{}_train.{}')
+
+    plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=True, 
+                         final=True, file_name=str(results_dir)+'/2_{}_heat_train.{}',
+                         which=which, net=net, gpu=gpu, config=config)
+
+    plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
+    print("Done!")
+
+    # Deep Feature Plotting : Testing Samples (+ Negatives)
+    print("Test Set with 'Known Unknown Samples'...")
+    known_tag = test_neg_gt != unkn_gt_label
+    unknown_tag = ~known_tag
+
+    pos_features = test_neg_feats[known_tag]
+    labels = test_neg_gt[known_tag]
+    neg_features = test_neg_feats[unknown_tag]
+
+    plotter_2D(pos_features, labels, 
+                         neg_features=None, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/1_{}_test.{}')
+
+    plotter_2D(pos_features, labels,
+                         neg_features=None, heat_map=True, 
+                         final=True, file_name=str(results_dir)+'/2_{}_heat_test.{}',
+                         which=which, net=net, gpu=gpu, config=config)
+
+    plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_test_neg.{}'),
+    print("Done!")
+
+    # Deep Feature Plotting : Testing Samples (+ Unknowns)
+    print("Test Set with 'Unknown Unknown Samples'...")
+    known_tag = test_unkn_gt != unkn_gt_label
+    unknown_tag = ~known_tag
+
+    pos_features = test_unkn_feats[known_tag]
+    labels = test_unkn_gt[known_tag]
+    neg_features = test_unkn_feats[unknown_tag]
+
+    plotter_2D(pos_features, labels, 
+                         neg_features=neg_features, heat_map=False, 
+                         final=True, file_name=str(results_dir)+'/3_{}_test_unkn.{}')
+
+    print("Done!\n")
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
 # Date: 2024
@@ -106,10 +177,13 @@ def plotter_2D(
 
     if heat_map:
         try:
-            min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
-            min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-            x = np.linspace(min_x * 1.5, max_x * 1.5, 500)
-            y = np.linspace(min_y * 1.5, max_y * 1.5, 500)
+            # min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
+            # min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
+            max_x = np.max(np.abs(pos_features[:, 0]))
+            max_y = np.max(np.abs(pos_features[:, 1]))
+            xy_range = max(max_x, max_y).item()
+            x = np.linspace(-1 * xy_range * 1.5, xy_range * 1.5, 500)
+            y = np.linspace(-1 * xy_range * 1.5, xy_range * 1.5, 500)
             pnts = list(itertools.chain(itertools.product(x, y)))
             pnts = np.array(pnts)
 
@@ -198,7 +272,6 @@ def plotter_2D(
             print("An exception occurred:", error)
             
     plt.close()
-
 
 def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
     """

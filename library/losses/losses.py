@@ -3,7 +3,9 @@ import torchvision
 from torch.nn import functional as F
 import numpy as np
 from .schedule import g_convex, g_concave, g_linear, g_composite_1, g_composite_2
+from .activations import OpenSetOvR
 from .. import tools
+from .. import dataset
 
 PRV_EPOCH = 0
 def get_PRV_EPOCH():
@@ -71,6 +73,220 @@ def calc_class_ratio(num_of_classes, labels, init_val=1, is_verbose=False):
 
     return tools.device(pos_ratio), tools.device(neg_ratio)
 
+def get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha, epoch=0, epochs=0, schedule='None'):
+
+    # is_verbose = False
+    # if epoch != get_PRV_EPOCH():
+    #     set_PRV_EPOCH(epoch)
+    #     is_verbose = True
+
+    # Only consider negative's probability
+    neg_probs = torch.where(enc_labels!=1, probs, -1)
+
+    # Initialize the mask
+    k_mask = torch.zeros(enc_labels.shape)
+    k_mask = tools.device(k_mask)
+
+    for i, p_cnt in enumerate(pos_cnts):
+        n_cnt = neg_cnts[i]
+
+        # Mining all negatives if there is no positives
+        if p_cnt == 0:
+            k_mask[:,i] == 1
+            continue
+        
+        # Get k for the mining
+        if schedule == 'linear':
+            c_k = g_linear(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'convex':
+            c_k = g_convex(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'concave':
+            c_k = g_concave(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'composite_1':
+            c_k = g_composite_1(epoch, n_cnt, p_cnt, 1, epochs)
+        elif schedule == 'composite_2':
+            c_k = g_composite_2(epoch, n_cnt, p_cnt, 1, epochs)
+        else:
+            c_k = alpha*(n_cnt - p_cnt) + p_cnt      # NEW ...
+
+        # Mining all negatives if k is larger than # of negatives 
+        if c_k > n_cnt:
+            k_mask[:,i] = 1
+            continue
+        
+        # Hard Negative Minings : Negatives with a high probability
+        c_k_idxs = torch.topk(neg_probs[:,i], int(c_k)).indices
+        k_mask[c_k_idxs, i] = 1
+
+    # Get the final masks including all postives and mined negatives
+    mining_mask = torch.where(torch.logical_or(enc_labels==1, k_mask==1), 1, 0)
+    return tools.device(mining_mask)
+
+class OvRLoss_Weight:
+
+    def __init__(self, need_init=False, training_data=None, num_of_classes=10, is_verbose=False):
+    
+        self.num_of_classes = num_of_classes
+        # self.mode = mode
+        # self.mode_fullname = mode_info[mode]
+        # self.mode_param = mode_param
+
+        
+        # Exceptional case : Loss needs global-wise pos/neg distribution for each class
+        self.glob_pos_ratio = None
+        self.glob_neg_ratio = None
+        if need_init:
+            assert training_data != None, f"Error : Initialization needs training data!"
+            gt_labels = dataset.get_gt_labels(training_data, is_verbose=is_verbose)
+            self.glob_pos_ratio, self.glob_neg_ratio = calc_class_ratio(num_of_classes, gt_labels, 1, is_verbose=is_verbose)
+
+    def get_f_weight(self, probs, enc_targets, gamma=1):
+        p_t = probs * enc_targets + (1 - probs) * (1 - enc_targets)
+        
+        # Basic 
+        weight = (1 - p_t) ** gamma
+
+        # v2. Applying Focal weight only on non-target samples
+        # weight = torch.where(enc_targets == 1, 1, (1 - p_t) ** gamma)
+
+        # print(f"Validation Check! Focal\n{weight.shape}\n{type(weight)}\n{weight[:3,:]}\n{enc_targets[:3,:]}")
+        return tools.device(weight)
+    
+    def get_c_weight(self, targets, enc_targets, from_global=True):
+
+        if from_global:
+            assert self.glob_pos_ratio != None or self.glob_neg_ratio != None, f"Error : <class OpenSetOvR_Weight> should be initialized. need_init=True"
+            weight = torch.where(enc_targets==1, self.glob_pos_ratio, self.glob_neg_ratio)
+        else:
+            # Calculate class weighting in a batch-wise
+            batch_pos_ratio, batch_neg_ratio = calc_class_ratio(self.num_of_classes, targets, 1, is_verbose=False)
+            weight = torch.where(enc_targets==1, batch_pos_ratio, batch_neg_ratio)
+
+        # print(f"Validation Check! Class balancing weight\n{weight.shape}\n{type(weight)}\n{weight[:3,:]}\n{enc_targets[:3,:]}")
+        return tools.device(weight)
+    
+    def get_m_weight(self, probs, targets, enc_targets, mining_size=0.3):
+
+        pos_cnts, neg_cnts = calc_class_cnt(self.num_of_classes, targets, is_verbose=False)
+        weight = get_mining_mask(probs, enc_targets, pos_cnts, neg_cnts, mining_size)
+
+        # print(f"Validation Check! Hard negative mining\n{weight.shape}\n{type(weight)}\n{weight[:10,:]}\n{enc_targets[:10,:]}")
+        return tools.device(weight)
+
+class OSOvRLoss:
+
+    def __init__(self, num_of_classes=10, loss_config=None, training_data=None, is_verbose=True):
+        
+        # Common
+        self.num_of_classes = num_of_classes
+        self.mode = loss_config.mode
+        self.osovr_act = OpenSetOvR(sigma=loss_config.sigma)
+        self.norm = True
+        if not self.norm: print("Logit not noramlized!")
+
+        if self.mode:
+            self.mode_namespace = list(self.mode.dict().keys())
+            if 'C' in self.mode_namespace:
+                need_init = self.mode.C == 'global'
+            else:
+                need_init = False
+            self.osovr_weight = OvRLoss_Weight(need_init = need_init,
+                                                  num_of_classes = self.num_of_classes,
+                                                  training_data = training_data,
+                                                  is_verbose=is_verbose)
+        # Console output
+        if is_verbose:
+            print(f"OSOvR Loss Loaded!")
+            print(f"Sigma : {loss_config.sigma}")
+
+            if self.mode: print(f"Mode : {self.mode}")
+            print()
+
+    @tools.loss_reducer
+    def __call__(self, logit_values, target_labels, last_layer_weights):
+
+        # One-hot encoding and Get Probability score
+        enc_target_labels = tools.target_encoding(target_labels, self.num_of_classes)
+        probs = self.osovr_act(logit_values, last_layer_weights, norm=self.norm)
+
+        # Weighting for balancing
+        if self.mode:
+            weight_total = tools.device(torch.ones(enc_target_labels.shape))
+            if 'C' in self.mode_namespace:
+                weight = self.osovr_weight.get_c_weight(target_labels, enc_target_labels, 
+                                                        from_global = self.mode.C == 'global')
+                weight_total = weight_total * weight
+            if 'F' in self.mode_namespace:
+                weight = self.osovr_weight.get_f_weight(probs, enc_target_labels,
+                                                        gamma = self.mode.F)
+                weight_total = weight_total * weight
+            if 'M' in self.mode_namespace:
+                weight = self.osovr_weight.get_m_weight(probs, target_labels, enc_target_labels,
+                                                        mining_size=self.mode.M)
+                weight_total = weight_total * weight
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels, weight = weight_total.detach())
+            # assert False, f"Validation Check! Basic OSOvR Loss"
+        else:
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels)
+
+        return all_loss
+
+class OvRLoss:
+
+    def __init__(self, num_of_classes=10, loss_config=None, training_data=None, is_verbose=True):
+
+        # Common
+        self.num_of_classes = num_of_classes
+        self.mode = loss_config.mode
+
+        if self.mode:
+            self.mode_namespace = list(self.mode.dict().keys())
+            if 'C' in self.mode_namespace:
+                need_init = self.mode.C == 'global'
+            else:
+                need_init = False
+            self.osovr_weight = OvRLoss_Weight(need_init = need_init,
+                                                  num_of_classes = self.num_of_classes,
+                                                  training_data = training_data,
+                                                  is_verbose=is_verbose)
+        # Console output
+        if is_verbose:
+            print(f"OvR Loss Loaded!")
+
+            if self.mode: print(f"Mode : {self.mode}")
+            print()
+        
+    @tools.loss_reducer
+    def __call__(self, logit_values, target_labels):
+        
+        # One-hot encoding and Get Probability score
+        enc_target_labels = tools.target_encoding(target_labels, self.num_of_classes)
+        probs = F.sigmoid(logit_values)
+
+        # Weighting for balancing
+        if self.mode:
+            weight_total = tools.device(torch.ones(enc_target_labels.shape))
+            if 'C' in self.mode_namespace:
+                weight = self.osovr_weight.get_c_weight(target_labels, enc_target_labels, 
+                                                        from_global = self.mode.C == 'global')
+                weight_total = weight_total * weight
+            if 'F' in self.mode_namespace:
+                weight = self.osovr_weight.get_f_weight(probs, enc_target_labels,
+                                                        gamma = self.mode.F)
+                weight_total = weight_total * weight
+            if 'M' in self.mode_namespace:
+                weight = self.osovr_weight.get_m_weight(probs, target_labels, enc_target_labels,
+                                                        mining_size=self.mode.M)
+                weight_total = weight_total * weight
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels, weight = weight_total.detach())
+            # assert False, f"Validation Check! Basic OSOvR Loss"
+        else:
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels)
+
+        return all_loss
+
+
+
 def get_class_weights(pos_ratio, neg_ratio, labels, enc_labels, unkn_weight, epoch, epochs, schedule='None'):
 
     # is_verbose = False
@@ -111,112 +327,7 @@ def get_class_weights(pos_ratio, neg_ratio, labels, enc_labels, unkn_weight, epo
     
     return tools.device(weights)
 
-def get_mining_mask(logits, enc_labels, pos_cnts, neg_cnts, alpha, epoch, epochs, schedule='None'):
-
-    # is_verbose = False
-    # if epoch != get_PRV_EPOCH():
-    #     set_PRV_EPOCH(epoch)
-    #     is_verbose = True
-
-    # Leave probabilities only for negative samples
-    neg_probs = torch.where(enc_labels!=1, F.sigmoid(logits), -1)
-
-    # Create masking of the mining result
-    k_mask = torch.zeros(enc_labels.shape)
-    k_mask = tools.device(k_mask)
-
-    for i, p_cnt in enumerate(pos_cnts):
-        n_cnt = neg_cnts[i]
-
-        # Mining all negatives if there is no positives
-        if p_cnt == 0:
-            k_mask[:,i] == 1
-            continue
-        
-        # Get k for the mining
-        if schedule == 'linear':
-            c_k = g_linear(epoch, n_cnt, p_cnt, 1, epochs)
-        elif schedule == 'convex':
-            c_k = g_convex(epoch, n_cnt, p_cnt, 1, epochs)
-        elif schedule == 'concave':
-            c_k = g_concave(epoch, n_cnt, p_cnt, 1, epochs)
-        elif schedule == 'composite_1':
-            c_k = g_composite_1(epoch, n_cnt, p_cnt, 1, epochs)
-        elif schedule == 'composite_2':
-            c_k = g_composite_2(epoch, n_cnt, p_cnt, 1, epochs)
-        else:
-            c_k = alpha*(n_cnt - p_cnt) + p_cnt      # NEW ...
-
-        # Mining all negatives if k is larger than # of negatives 
-        if c_k > n_cnt:
-            k_mask[:,i] = 1
-            continue
-        
-        # Hard Negative Minings : Negatives with a high probability
-        c_k_idxs = torch.topk(neg_probs[:,i], int(c_k)).indices
-        k_mask[c_k_idxs, i] = 1
-
-        # if is_verbose:
-        #     set_PRV_EPOCH(epoch)
-        #     print(c_k, p_cnt, n_cnt, alpha, epoch, epochs)
-
-    # Get the final masks including all postives and mined negatives
-    mining_mask = torch.where(torch.logical_or(enc_labels==1, k_mask==1), 1, 0)
-
-    return tools.device(mining_mask)
-
-def focal_loss_custom(logits, labels, enc_labels, gamma, alpha_pos, alpha_neg, unkn_weight, epoch, epochs, schedule='None', focal_mining=1, reduction='mean'):
-    # Reference > torchvision.ops.sigmoid_focal_loss
-
-    # Get p_t
-    p = torch.sigmoid(logits)
-    ce_loss = F.binary_cross_entropy_with_logits(logits, enc_labels, reduction="none")
-    p_t = p * enc_labels + (1 - p) * (1 - enc_labels)
-
-    # Gamma scheduling
-    # if schedule == 'linear':
-    #     gamma = g_linear(epoch, 0, gamma, 1, epochs)
-    # elif schedule == 'convex':
-    #     gamma = g_concave(epoch, 0, gamma, 1, epochs)
-    # elif schedule == 'concave':
-    #     gamma = g_convex(epoch, 0, gamma, 1, epochs)
-    # elif schedule == 'composite_1':
-    #     gamma = g_composite_2(epoch, 0, gamma, 1, epochs)
-    # elif schedule == 'composite_2':
-    #     gamma = g_composite_1(epoch, 0, gamma, 1, epochs)
-
-    # Get focal loss without class weighting
-    loss = ce_loss * ((1 - p_t) ** gamma)
-
-    # if epoch != get_PRV_EPOCH():
-    #     set_PRV_EPOCH(epoch)
-
-    # Variant 1. Get focal loss with class weighting
-    if (torch.concat((alpha_pos, alpha_neg)) != 1).sum() > 0:
-        alpha_t = get_class_weights(alpha_pos, alpha_neg, labels, enc_labels, unkn_weight, epoch, epochs, schedule)
-        loss = alpha_t * loss
-
-    # Variant 2. Get focal loss with Hard Negative Mining
-    if focal_mining != 1:
-        pos_cnts, neg_cnts = calc_class_cnt(enc_labels.shape[1], labels)
-        mining_mask = get_mining_mask(logits, enc_labels, pos_cnts, neg_cnts, focal_mining, epoch, epochs, schedule)
-        loss = mining_mask * loss
-
-    # Check reduction option and return loss accordingly
-    if reduction == "none":
-        pass
-    elif reduction == "mean":
-        loss = loss.mean()
-    elif reduction == "sum":
-        loss = loss.sum()
-    else:
-        raise ValueError(
-            f"Invalid Value for arg 'reduction': '{reduction} \n Supported reduction modes: 'none', 'mean', 'sum'"
-        )
-
-    return loss
-
-def focal_loss_custom_2(logits, enc_labels, gamma, alpha_t, mining_mask, reduction='mean'):
+def focal_loss_custom(logits, enc_labels, gamma, alpha_t, mining_mask, reduction='mean'):
     # Reference > torchvision.ops.sigmoid_focal_loss
 
     # Get p_t
@@ -256,10 +367,9 @@ def focal_loss_custom_2(logits, enc_labels, gamma, alpha_t, mining_mask, reducti
 
     return loss
 
-
 class multi_binary_loss:
 
-    def __init__(self, epochs, num_of_classes=10, gt_labels=None, loss_config=None,is_verbose=True):
+    def __init__(self, epochs, num_of_classes=10, gt_labels=None, loss_config=None, training_data=None, is_verbose=True):
 
         # Common
         self.num_of_classes = num_of_classes
@@ -280,7 +390,7 @@ class multi_binary_loss:
         # Focal Hyperparameter
         self.focal_g = loss_config.focal_gamma
         self.focal_a = loss_config.focal_alpha
-        self.focal_uw = loss_config.focal_weight_unkn
+        self.focal_uw = loss_config.wclass_weight_unkn
         self.focal_mining_a = loss_config.focal_mining
         
         # Console output
@@ -319,11 +429,11 @@ class multi_binary_loss:
             print()
         
     @tools.loss_reducer
-    def __call__(self, logit_values, target_labels, epoch):
+    def __call__(self, logit_values, target_labels, epoch=0):
         
         # Encode target values
         enc_target_labels = tools.target_encoding(target_labels, self.num_of_classes)
-
+    
         # ------------------------------------------------------
         # Approach 1. BCE Loss & CLASS WEIGHTING
         # ------------------------------------------------------
@@ -381,7 +491,7 @@ class multi_binary_loss:
 
 
             # Calculate Focal Loss
-            all_loss = focal_loss_custom_2(logit_values, enc_target_labels, self.focal_g, alpha_t, mining_mask)
+            all_loss = focal_loss_custom(logit_values, enc_target_labels, self.focal_g, alpha_t, mining_mask)
             
         # ------------------------------------------------------
         # (BASE) Approach.
@@ -391,6 +501,7 @@ class multi_binary_loss:
             all_loss = F.binary_cross_entropy_with_logits(logit_values, enc_target_labels)
 
         return all_loss
+
 
 ########################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS

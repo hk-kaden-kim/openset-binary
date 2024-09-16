@@ -24,44 +24,29 @@ def load_network(args, config, which, num_classes, seed=-1):
     else:
         network_file = os.path.join(config.arch.model_root, f"{args.scale}/_s{seed}/{args.arch}/{which}")
 
-    # if config.arch.force_fc_dim == 2 and args.scale == 'SmallScale':
-    #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_fc_dim_2/{args.arch}/{which}")
-
-    # if args.scale == 'LargeScale':
-    #     network_file = os.path.join(config.arch.model_root, f"{args.scale}_{config.data.largescale.level}/{args.arch}/{which}")
-    
-
-    if config.need_sync:
-        network_file = os.path.join(network_file, f"{which}.pth")
-    else:
-        network_file = os.path.join(network_file, f"{which}.model")
+    network_file = os.path.join(network_file, f"{which}.model")
 
     print(network_file)
     if os.path.exists(network_file):
 
-        # Add bias term at the last layer, if it is either 'Garbage' and 'MultiBinary'
-        final_layer_bias = False 
-        if which in ['MultiBinary']:    # Garbage
-        # if True:    # Garbage
-            final_layer_bias = True
-        # assert False, f"{final_layer_bias} {args.approach}"
-        if 'LeNet_plus_plus' in args.arch:
-            arch_name = 'LeNet_plus_plus'
+        if 'LeNet' in args.arch:
+            arch_name = 'LeNet'
+            if 'plus_plus' in args.arch:
+                arch_name = 'LeNet_plus_plus'
         elif 'ResNet_18' in args.arch:
             arch_name = 'ResNet_18'
         elif 'ResNet_50' in args.arch:
             arch_name = 'ResNet_50'
         else:
             arch_name = None
-
         net = architectures.__dict__[arch_name](use_BG=which=="Garbage",
                                                 num_classes=num_classes,
-                                                final_layer_bias=final_layer_bias,)
+                                                final_layer_bias=False,)
         checkpoint = torch.load(network_file, map_location=torch.device('cpu')) 
 
-        if config.need_sync:
-            print('Weights are came from the reference code! Sync the weight name!')
-            checkpoint = architectures.checkpoint_sync(checkpoint["model_state_dict"], map_location=torch.device('cpu'))     
+        # if config.need_sync:
+        #     print('Weights are came from the reference code! Sync the weight name!')
+        #     checkpoint = architectures.checkpoint_sync(checkpoint["model_state_dict"], map_location=torch.device('cpu'))     
         
         net.load_state_dict(checkpoint)
         device(net)

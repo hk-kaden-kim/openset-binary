@@ -1,24 +1,9 @@
 import torch
 from torch.nn import functional as F
 from .. import tools
+from .activations import OpenSetOvR
 
 """This file contains different metrics that can be applied to evaluate the training"""
-
-
-def multi_binary_confidence(logits:torch.Tensor, target):
-    """Measures the multi binary confidence of the correct class for known samples,
-        ...
-    """
-
-    with torch.no_grad():
-        num_of_classes = logits.shape[1]
-        enc_target = tools.target_encoding(target, num_of_classes, init=1, kn_target=0)
-        all_probs = F.sigmoid(logits)
-
-        confidence_by_sample = torch.mean(torch.abs(enc_target - all_probs), dim=1)
-        confidence = torch.sum(confidence_by_sample)
-
-    return torch.tensor((confidence, len(logits), confidence, len(logits)))
 
 # #######################################################################
 # Author: Vision And Security Technology (VAST) Lab in UCCS
@@ -27,7 +12,7 @@ def multi_binary_confidence(logits:torch.Tensor, target):
 # #######################################################################
 
 
-def accuracy(prediction, target):
+def accuracy(scores, target):
     """Computes the classification accuracy of the classifier based on known samples only.
     Any target that does not belong to a certain class (target is -1) is disregarded.
 
@@ -50,81 +35,29 @@ def accuracy(prediction, target):
         total = torch.sum(known, dtype=int)
         if total:
             correct = torch.sum(
-                torch.max(prediction[known], axis=1).indices == target[known], dtype=int
+                torch.max(scores[known], axis=1).indices == target[known], dtype=int
             )
         else:
             correct = 0
 
     return torch.tensor((correct, total))
 
+# def accuracy_osovr(prediction, target):
+#     with torch.no_grad():
+#         known = target >= 0
 
-def sphere(representation, target, sphere_radius=None):
-    """Computes the radius of unknown samples.
-    For known samples, the radius is computed and added only when sphere_radius is not None.
+#         total = torch.sum(known, dtype=int)
+#         if total:
+#             correct = torch.sum(
+#                 # Get the closest value to logit 0
+#                 torch.min(torch.abs(prediction[known]), axis=1).indices == target[known], dtype=int
+#             )
+#         else:
+#             correct = 0
 
-    Parameters:
+#     return torch.tensor((correct, total))
 
-      representation: the feature vector of the samples
-
-      target: the vector of true classes; can be -1 for unknown samples
-
-    Returns a tensor with two entries:
-
-      length: The sum of the length of the samples
-
-      total: The total number of considered samples
-    """
-
-    with torch.no_grad():
-        known = target >= 0
-
-        magnitude = torch.norm(representation, p=2, dim=1)
-
-        sum = torch.sum(magnitude[~known])
-        total = torch.sum(~known)
-
-        if sphere_radius is not None:
-            sum += torch.sum(torch.clamp(sphere_radius - magnitude, min=0.0))
-            total += torch.sum(known)
-
-    return torch.tensor((sum, total))
-
-
-def confidence(logits, target, negative_offset=0.1):
-    """Measures the softmax confidence of the correct class for known samples,
-    and 1 + negative_offset - max(confidence) for unknown samples.
-
-    Parameters:
-
-      logits: the output of the network, must be logits
-
-      target: the vector of true classes; can be -1 for unknown samples
-
-    Returns a tensor with two entries:
-
-      confidence: the sum of the confidence values for the samples
-
-      total: The total number of considered samples
-    """
-
-    with torch.no_grad():
-        known = target >= 0
-
-        pred = torch.nn.functional.softmax(logits, dim=1)
-        #    import ipdb; ipdb.set_trace()
-
-        confidence = 0.0
-        if torch.sum(known):
-            confidence += torch.sum(pred[known, target[known]])
-        if torch.sum(~known):
-            confidence += torch.sum(
-                1.0 + negative_offset - torch.max(pred[~known], dim=1)[0]
-            )
-
-    return torch.tensor((confidence, len(logits)))
-
-def confidence_v2(logits, target, offset=0., unknown_class = -1, last_valid_class = None, is_binary=False):
-# def confidence(scores, target_labels, offset=0., unknown_class = -1, last_valid_class = None):
+def confidence(scores, labels, offset=0., unknown_class = -1, last_valid_class = None):
     """ Returns model's confidence, Taken from https://github.com/Vastlab/vast/tree/main/vast.
 
     Args:
@@ -141,19 +74,18 @@ def confidence_v2(logits, target, offset=0., unknown_class = -1, last_valid_clas
         neg_count Count of negative samples.
     """
     with torch.no_grad():
-        if is_binary:
-            scores = F.sigmoid(logits)
-        else:
-            scores = torch.nn.functional.softmax(logits, dim=1)
-        unknown = target == unknown_class
-        known = torch.logical_and(target >= 0, ~unknown)
+
+        unknown = labels == unknown_class
+        known = torch.logical_and(labels >= 0, ~unknown)
+
         kn_count = sum(known).item()    # Total known samples in data
         neg_count = sum(unknown).item()  # Total negative samples in data
         kn_conf_sum = 0.0
         neg_conf_sum = 0.0
+
         if kn_count:
-            # Average confidence known samples
-            kn_conf_sum = torch.sum(scores[known, target[known]]).item()
+            # Sum confidence known samples
+            kn_conf_sum = torch.sum(scores[known, labels[known]]).item()
         if neg_count:
             # we have negative labels in the validation set
             neg_conf_sum = torch.sum(

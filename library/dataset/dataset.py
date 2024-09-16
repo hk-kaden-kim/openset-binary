@@ -20,7 +20,7 @@ def transpose(x):
     """Used for correcting rotation of EMNIST"""
     return x.transpose(2,1)
 
-def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=True):
+def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=False):
 
     if is_verbose:
         print(f"Get Ground Truth Labels.")
@@ -45,7 +45,7 @@ def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=True):
 
     return gt_labels
 
-def calc_class_weight(dataset, batch_size=1024, gpu=None, is_verbose=True):
+def calc_class_weight(dataset, batch_size=1024, gpu=None, is_verbose=False):
     
     gt_labels = get_gt_labels(dataset, batch_size, gpu, is_verbose)
     total_num = len(gt_labels)
@@ -74,8 +74,8 @@ class EMNIST():
         self.seed = seed
 
         data_transform = [transforms.ToTensor(), transpose]
-        if convert_to_rgb:
-            data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
+        # if convert_to_rgb:
+        #     data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
 
         self.train_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
@@ -106,7 +106,7 @@ class EMNIST():
                         transform=transforms.Compose(data_transform)
                     )
         
-    def get_train_set(self, include_negatives=False, has_background_class=False):
+    def get_train_set(self, size_train_negatives=-1, has_background_class=False, is_verbose=False):
         
         # Get MNIST for Known samples
         mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
@@ -117,15 +117,30 @@ class EMNIST():
         letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
         tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=self.split_ratio, random_state=self.seed)
-        tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
-        tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
 
-        # Create Train and Val Dataset
-        train_emnist = ConcatDataset([tr_mnist])
-        val_emnist = ConcatDataset([val_mnist, val_letters])
 
-        if include_negatives:
+        # No Negatives in training
+        if size_train_negatives == 0:
+            if is_verbose:
+                print(f"# of negatives for training: {size_train_negatives}")
+            val_letters = Subset(self.train_letters, val_letters_idxs)
+            val_letters = EmnistUnknownDataset(val_letters,has_background_class)
+            train_emnist = ConcatDataset([tr_mnist])
+        else:
+            # Reduce the size of negatives in training set
+            if size_train_negatives > 0:
+                assert len(tr_letters_idxs) > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {len(tr_letters_idxs)}, which is {len(letters_idxs)} x {self.split_ratio}."
+                tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
+                if is_verbose:
+                    print(f"# of negatives for training: {size_train_negatives} {len(tr_letters_idxs)}")
+            elif size_train_negatives == -1:
+                if is_verbose:
+                    print(f"# of negatives for training: -1 >> ALL {int(len(tr_letters_idxs))}")
+            tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
+            tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
             train_emnist = ConcatDataset([tr_mnist, tr_letters])
+        
+        val_emnist = ConcatDataset([val_mnist, val_letters])
 
         return (train_emnist, val_emnist, 10)
 
@@ -167,9 +182,9 @@ class EmnistUnknownDataset(torch.utils.data.dataset.Subset):
         return index, int(self.dataset.targets[self.indices[index]]), 10 if self.has_background_class else -1
 
 class IMAGENET():
-    def __init__(self, dataset_root, protocol_root, protocol=1):
-        
-        print(f"Protocol: {protocol}")
+    def __init__(self, dataset_root, protocol_root, protocol=1, is_verbose=False):
+        if is_verbose:
+            print(f"Protocol: {protocol}")
 
         # Set image transformations
         self.train_data_transform = transforms.Compose(
@@ -196,7 +211,7 @@ class IMAGENET():
         if not self.test_file.exists():
             raise FileNotFoundError(f"ImageNet Train Protocol is not exist at {self.test_file}")
 
-    def get_train_set(self, include_negatives=False, has_background_class=False):
+    def get_train_set(self, size_train_negatives=-1, has_background_class=False, is_verbose=False):
 
         train_ds = ImagenetDataset(
                 csv_file=self.train_file,
@@ -209,10 +224,23 @@ class IMAGENET():
                 imagenet_path=self.dataset_root,
                 transform=self.val_data_transform
             )
-        
-        if not include_negatives:
+
+
+        # Reduce the size of negatives in training set
+        if size_train_negatives == 0:
+            if is_verbose:
+                print(f"# of negatives for training: {size_train_negatives}")
             train_ds.remove_negative_label()
-        
+        if size_train_negatives > 0:
+            assert len(tr_letters_idxs) > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {len(tr_letters_idxs)}, which is {len(letters_idxs)} x {self.split_ratio}."
+            tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
+            if is_verbose:
+                print(f"# of negatives for training: {size_train_negatives} {len(train_ds)}")
+        elif size_train_negatives == -1:
+            if is_verbose:
+                print(f"# of negatives for training: -1 >> ALL {int(len(train_ds))}")
+
+
         if has_background_class:
             train_ds.replace_negative_label()
             val_ds.replace_negative_label()
