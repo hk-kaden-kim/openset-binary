@@ -7,7 +7,6 @@ batch_size:
   largescale: 256 # Fixed
 pred_save: 1    # Set as '1' if you want to save the prediction results
 oscr_save: 1    # Set as '1' if you want to save the oscr curve data
-need_sync: 0    # Set as '1' if the model is trained with the reference code.
 
 ##########################################
 # Data Parameters
@@ -18,11 +17,13 @@ data:
   largescale:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
-    level: 2 # 1 2 3
+    # level: 2 # 1 2 3
+  train_neg_size: -1 # -1 for using all. SmallScale : < 42240  LargeScale_1 : LargeScale_2 : LargeScale_3 : 
 
 ##########################################
 # Architecture Parameters
 ##########################################
 arch:
   model_root: ../../_models
-#  force_fc_dim: 1000 # Set the feature dimensionality on purpose. -1 : feature space dimension == num of classes
+
+osovr_sigma: 8      # LeNet_plus_plus : 6     LeNet : 8

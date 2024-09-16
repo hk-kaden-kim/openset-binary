@@ -3,11 +3,11 @@
 ##########################################
 seed: 42        # Common seed across all source of randomness
 batch_size: 
-  smallscale: 128 
+  smallscale: 128 # 128
   largescale: 64  # batch size is 64 because of the memory constraint but increase the epochs to 120, then, all data can be seen enough time to the model.
 epochs:
   smallscale: 70 # 70
-  largescale: 120
+  largescale: 120 # 120
 num_workers: 5      # Dataloader number of workers
 
 ##########################################
@@ -20,13 +20,11 @@ data:
   largescale:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
-    level: 1 # 1 2 3
+  train_neg_size: 0 # -1 for using all. SmallScale : < 42000 (42240)  LargeScale_2 : < 60000 (60689)
 
 ##########################################
-# Architecture Parameters
+# Data Parameters
 ##########################################
-arch:
-#  force_fc_dim: 1000 # Set the feature dimensionality on purpose. -1 : feature space dimension == num of classes
 
 ##########################################
 # Loss Parameters
@@ -34,28 +32,23 @@ arch:
 loss:
   eos:
     unkn_weight: 1
-  mbc:
-    option: 'focal' # None, wclass, mining, focal
-    schedule: 'None' # None, linear, convex, concave, composite_1, composite_2
-
-    # ---------------------------------
-    wclass_type: 'batch' # global batch
-    wclass_weight_unkn: 20  # 1 5 10 20 30     # Small 27    # Large 2.6
-
-    # ---------------------------------
-    mining_alpha:  0.7         # 0(balanced) 0.1 0.3 0.5 0.7 0.9 1(unbalanced)
-
-    # ---------------------------------
-    focal_alpha: 'None'         # None global batch
-    focal_gamma: 3              # 0(No focal) ~
-    focal_mining: 0.6             # 0(balanced) 0.1 0.3 0.5 0.7 0.9 1(unbalanced)
-    focal_mining_schedule: 'None'     # None, linear, convex, concave, composite_1, composite_2
+  osovr:
+    sigma: 5        # LeNet_plus_plus : 6     LeNet : 8       ResNet_50 : 5 6 8 11 15
+    mode:
+      # C: 'batch'   # 'global' or 'batch'
+      # F: 3        # 0.2 0.6 1 2 3
+      # M: 0.8      # 0 or 0.2 or 0.4 or 0.6 or 0.8
+  ovr:
+    mode:
+      # C: 'batch'   # 'global' or 'batch'
+      # F: 3        # 0.2 0.6 1 2 3
+      # M: 0.8      # 0 or 0.2 or 0.4 or 0.6 or 0.8
 
 ##########################################
 # Optimizer Parameters
 ##########################################
 opt:
   solver: adam  # Two options: {adam, sgd}
-  lr: 1.e-3   # Initial learning rate
-  decay: 0    # Number of epochs to wait for each learning rate reduction. 0 means no decay
-  gamma: 1    # Factor to reduce the learning rate
+  lr: 1.e-3   # 1.e-3. Initial learning rate
+  decay: 0    # 0. Number of epochs to wait for each learning rate reduction. 0 means no decay
+  gamma: 1    # 1. Factor to reduce the learning rate
