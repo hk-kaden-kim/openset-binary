@@ -68,48 +68,55 @@ class EMNIST():
 
     """
     
-    def __init__(self, dataset_root, convert_to_rgb=False, split_ratio=0.8, seed=42):
+    def __init__(self, dataset_root, split_ratio=0.8, label_filter=[-1], seed=42, convert_to_rgb=False):
+        print("\n↓↓↓ Dataset setup ↓↓↓")
+        print(f"{self.__class__.__name__} Dataset Loaded!")
         self.dataset_root = dataset_root
         self.split_ratio = split_ratio
         self.seed = seed
+        self.label_filter = label_filter
 
         data_transform = [transforms.ToTensor(), transpose]
-        # if convert_to_rgb:
-        #     data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
+        if convert_to_rgb:
+            data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
 
         self.train_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
-                        train=True,
+                        train=True,         # TRAIN
                         download=False, 
                         split="mnist",
                         transform=transforms.Compose(data_transform)
                     )
         self.test_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
-                        train=False,
+                        train=False,           # TEST
                         download=False,
                         split="mnist",
                         transform=transforms.Compose(data_transform)
                     )
         self.train_letters = torchvision.datasets.EMNIST(
                         root=dataset_root,
-                        train=True,
+                        train=True,             # TRAIN
                         download=False,
                         split='letters',
                         transform=transforms.Compose(data_transform)
                     )
         self.test_letters = torchvision.datasets.EMNIST(
                         root=dataset_root,
-                        train=False,
+                        train=False,            # TEST
                         download=False,
                         split='letters',
                         transform=transforms.Compose(data_transform)
                     )
         
-    def get_train_set(self, size_train_negatives=-1, has_background_class=False, is_verbose=False):
+    def get_train_set(self, size_train_negatives=-1, has_background_class=False, is_verbose=True):
         
         # Get MNIST for Known samples
-        mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
+        if self.label_filter[0] == -1:
+            mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
+        else:
+            mnist_idxs = [i for i, t in enumerate(self.train_mnist.targets) if t in self.label_filter]
+            if is_verbose: print(f"Filtered Target Label : {self.label_filter}")
         tr_mnist_idxs, val_mnist_idxs = train_test_split(mnist_idxs, train_size=self.split_ratio, random_state=self.seed)
         tr_mnist, val_mnist = Subset(self.train_mnist, tr_mnist_idxs), Subset(self.train_mnist, val_mnist_idxs)
 
@@ -118,14 +125,14 @@ class EMNIST():
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
         tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=self.split_ratio, random_state=self.seed)
 
-
-        # No Negatives in training
+        # Negatives in training
         if size_train_negatives == 0:
             if is_verbose:
                 print(f"# of negatives for training: {size_train_negatives}")
             val_letters = Subset(self.train_letters, val_letters_idxs)
             val_letters = EmnistUnknownDataset(val_letters,has_background_class)
             train_emnist = ConcatDataset([tr_mnist])
+            val_emnist = ConcatDataset([val_mnist])
         else:
             # Reduce the size of negatives in training set
             if size_train_negatives > 0:
@@ -139,14 +146,17 @@ class EMNIST():
             tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
             tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
             train_emnist = ConcatDataset([tr_mnist, tr_letters])
-        
-        val_emnist = ConcatDataset([val_mnist, val_letters])
+            val_emnist = ConcatDataset([val_mnist, val_letters])
 
-        return (train_emnist, val_emnist, 10)
+        return (train_emnist, val_emnist, 10 if self.label_filter[0] == -1 else len(self.label_filter))
 
-    def get_test_set(self, has_background_class=False):
+    def get_test_set(self, has_background_class=False, is_verbose=True):
 
-        mnist_idxs = [i for i, _ in enumerate(self.test_mnist.targets)]
+        if self.label_filter[0] == -1:
+            mnist_idxs = [i for i, _ in enumerate(self.test_mnist.targets)]
+        else:
+            mnist_idxs = [i for i, t in enumerate(self.test_mnist.targets) if t in self.label_filter]
+            if is_verbose: print(f"Filtered Target Label : {self.label_filter}")
         test_mnist = Subset(self.test_mnist, mnist_idxs)
 
         letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
@@ -178,11 +188,20 @@ class EmnistUnknownDataset(torch.utils.data.dataset.Subset):
     def __getitem__(self, index):
         return self.dataset[self.indices[index]][0], 10 if self.has_background_class else -1
 
-    def check(self, index):
+    def check_len(self, index):
         return index, int(self.dataset.targets[self.indices[index]]), 10 if self.has_background_class else -1
+
+    def check_stats(self):
+        label = []
+        for idx in self.indices:
+            label.append(self.dataset[idx][1])
+        label = np.array(label)
+        return np.unique(label, return_counts=True)
 
 class IMAGENET():
     def __init__(self, dataset_root, protocol_root, protocol=1, is_verbose=False):
+        print("\n↓↓↓ Dataset setup ↓↓↓")
+        print(f"{self.__class__.__name__} Dataset Loaded!")
         if is_verbose:
             print(f"Protocol: {protocol}")
 
@@ -228,17 +247,22 @@ class IMAGENET():
 
         # Reduce the size of negatives in training set
         if size_train_negatives == 0:
-            if is_verbose:
-                print(f"# of negatives for training: {size_train_negatives}")
+            if is_verbose: print(f"# of negatives for training: {size_train_negatives}")
             train_ds.remove_negative_label()
-        if size_train_negatives > 0:
-            assert len(tr_letters_idxs) > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {len(tr_letters_idxs)}, which is {len(letters_idxs)} x {self.split_ratio}."
-            tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
-            if is_verbose:
-                print(f"# of negatives for training: {size_train_negatives} {len(train_ds)}")
         elif size_train_negatives == -1:
-            if is_verbose:
-                print(f"# of negatives for training: -1 >> ALL {int(len(train_ds))}")
+            if is_verbose: print(f"# of negatives for training: {train_ds.get_negatives_size()}")
+        else:
+            assert False, f"Not avilable to set the size of Negatives in Large-scale training dataset"
+        
+        # else:
+        #     if size_train_negatives > 0:
+        #         assert train_ds.get_negatives_size() > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {train_ds.get_negatives_size()}."
+        #         tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
+        #         if is_verbose:
+        #             print(f"# of negatives for training: {size_train_negatives} {len(train_ds)}")
+        #     elif size_train_negatives == -1:
+        #         if is_verbose:
+        #             print(f"# of negatives for training: -1 >> ALL {train_ds.get_negatives_size()}")
 
 
         if has_background_class:
@@ -373,6 +397,9 @@ class ImagenetDataset(torch.utils.data.dataset.Dataset):
         self.dataset = self.dataset.drop(self.dataset[self.dataset[1] < 0].index)
         self.unique_classes = np.sort(self.dataset[1].unique())
         self.label_count = len(self.dataset[1].unique())
+
+    def get_negatives_size(self):
+        return sum(self.dataset[1] < 0)
 
     def calculate_class_weights(self):
         """ Calculates the class weights based on sample counts.

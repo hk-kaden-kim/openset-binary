@@ -33,7 +33,7 @@ def get_probs(pnts, which, net, config, gpu=None):
     if which == 'OvR':
         probs = F.sigmoid(result).detach()
     elif which == 'OpenSetOvR':
-        osovr_act = losses.OpenSetOvR(config.osovr_sigma)
+        osovr_act = losses.OpenSetOvR(config.osovr_sigma.dict()[net.__class__.__name__])
         probs = osovr_act(result, net.fc2.weight.data).detach()
     else:
         probs = F.softmax(result, dim=1).detach()

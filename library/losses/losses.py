@@ -174,13 +174,14 @@ class OvRLoss_Weight:
         return tools.device(weight)
 
 class OSOvRLoss:
-
-    def __init__(self, num_of_classes=10, loss_config=None, training_data=None, is_verbose=True):
-        
+    def __init__(self, num_of_classes=10, sigma=None, mode=None, training_data=None, is_verbose=True):
+        print("\n↓↓↓ Loss setup ↓↓↓")
+        print(f"{self.__class__.__name__} Loaded!")
+        if mode: print(f"Mode : {mode}")
         # Common
         self.num_of_classes = num_of_classes
-        self.mode = loss_config.mode
-        self.osovr_act = OpenSetOvR(sigma=loss_config.sigma)
+        self.mode = mode
+        self.osovr_act = OpenSetOvR(sigma=sigma)
         self.norm = True
         if not self.norm: print("Logit not noramlized!")
 
@@ -193,14 +194,7 @@ class OSOvRLoss:
             self.osovr_weight = OvRLoss_Weight(need_init = need_init,
                                                   num_of_classes = self.num_of_classes,
                                                   training_data = training_data,
-                                                  is_verbose=is_verbose)
-        # Console output
-        if is_verbose:
-            print(f"OSOvR Loss Loaded!")
-            print(f"Sigma : {loss_config.sigma}")
-
-            if self.mode: print(f"Mode : {self.mode}")
-            print()
+                                                  is_verbose=is_verbose)        
 
     @tools.loss_reducer
     def __call__(self, logit_values, target_labels, last_layer_weights):
@@ -233,11 +227,14 @@ class OSOvRLoss:
 
 class OvRLoss:
 
-    def __init__(self, num_of_classes=10, loss_config=None, training_data=None, is_verbose=True):
+    def __init__(self, num_of_classes=10, mode=None, training_data=None, is_verbose=True):
+        print("\n↓↓↓ Loss setup ↓↓↓")
+        print(f"{self.__class__.__name__} Loaded!")
+        if mode: print(f"Mode : {mode}")
 
         # Common
         self.num_of_classes = num_of_classes
-        self.mode = loss_config.mode
+        self.mode = mode
 
         if self.mode:
             self.mode_namespace = list(self.mode.dict().keys())
@@ -249,12 +246,6 @@ class OvRLoss:
                                                   num_of_classes = self.num_of_classes,
                                                   training_data = training_data,
                                                   is_verbose=is_verbose)
-        # Console output
-        if is_verbose:
-            print(f"OvR Loss Loaded!")
-
-            if self.mode: print(f"Mode : {self.mode}")
-            print()
         
     @tools.loss_reducer
     def __call__(self, logit_values, target_labels):

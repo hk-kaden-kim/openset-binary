@@ -50,7 +50,7 @@ def evaluate(args, config, seed):
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root,
                               split_ratio = 0.8, seed = seed,
-                              convert_to_rgb=False)
+                              label_filter=config.data.smallscale.label_filter,)
     else:
         data = dataset.IMAGENET(config.data.largescale.root,
                                 protocol_root = config.data.largescale.protocol, 
@@ -91,15 +91,15 @@ def evaluate(args, config, seed):
         # Load evaluation dataset
         if which == 'Garbage':
             train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=True)
-            _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=True)
+            _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=True)
             unkn_gt_label = num_classes
         else:
             train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
-            _, test_set_neg, test_set_unkn = data.get_test_set(has_background_class=False)
+            _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=False)
             unkn_gt_label = -1
         
         # Load weights of the model
-        net = evals.load_network(args, config, which, num_classes, seed = seed)
+        net = evals.load_network(args, config, which, num_classes, is_osovr=which=='OpenSetOvR', seed = seed)
         if net is None:
             print(f"Weights are not loaded on the network!\n{which} Evaluation Terminated\n")
             continue
@@ -123,12 +123,14 @@ def evaluate(args, config, seed):
                 train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
             test_neg_probs = F.sigmoid(torch.tensor(pred_results['test_neg'][1])).detach().numpy()
             test_unkn_probs  = F.sigmoid(torch.tensor(pred_results['test_unkn'][1])).detach().numpy()
+        
         elif which == 'OpenSetOvR':
-            osovr_act = losses.OpenSetOvR(config.osovr_sigma)
+            osovr_act = losses.OpenSetOvR(config.osovr_sigma.dict()[net.__class__.__name__])
             if args.scale == 'SmallScale':
                 train_probs = osovr_act(tools.device(torch.tensor(pred_results['train'][1])), net.fc2.weight.data).detach().cpu().numpy()
             test_neg_probs = osovr_act(tools.device(torch.tensor(pred_results['test_neg'][1])), net.fc2.weight.data).detach().cpu().numpy()
             test_unkn_probs  = osovr_act(tools.device(torch.tensor(pred_results['test_unkn'][1])), net.fc2.weight.data).detach().cpu().numpy()
+        
         else:
             if args.scale == 'SmallScale':
                 train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
@@ -147,6 +149,7 @@ def evaluate(args, config, seed):
 
         if config.pred_save:
             evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
+            # evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = True)
 
         if args.scale == 'SmallScale' and 'LeNet_plus_plus' in args.arch:
             tools.viz.deep_features_plot(which, net,
@@ -224,7 +227,7 @@ if __name__ == '__main__':
         f"Approach: {args.approach} \n"
         f"Configuration: {args.config} \n"
         f"Seed: {args.seed}\n"
-        f"---------\nOSOvR Sigma: {config.osovr_sigma}\n"
+        f"---------\nOSOvR Sigma: {config.osovr_sigma.dict()}\n"
           )
 
     for s in args.seed:

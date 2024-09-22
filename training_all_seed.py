@@ -11,6 +11,7 @@ from library import architectures, tools, losses, dataset
 import pathlib
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 
 import time
 
@@ -29,6 +30,25 @@ import time
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 
+def check_grad_flow(named_parameters):
+    ave_grads = []
+    layers = []
+    for n, p in named_parameters:
+        if(p.requires_grad) and ("bias" not in n):
+            layers.append(n)
+            ave_grads.append(p.grad.abs().mean().tolist())
+    # plt.plot(ave_grads, alpha=0.3, color="b")
+    # plt.hlines(0, 0, len(ave_grads)+1, linewidth=1, color="k" )
+    # plt.xticks(range(0,len(ave_grads), 1), layers, rotation="vertical")
+    # plt.xlim(xmin=0, xmax=len(ave_grads))
+    # plt.xlabel("Layers")
+    # plt.ylabel("average gradient")
+    # plt.title("Gradient flow")
+    # plt.grid(True)
+    return ave_grads, layers
+
+def check_fc2_weights(net,):
+    return net.fc2.weight.tolist()
 
 def set_seeds(seed):
     """ Sets the seed for different sources of randomness.
@@ -58,12 +78,14 @@ def command_line_options():
 
     return parser.parse_args()
 
-def get_data_and_loss(args, config, epochs, seed):
+def get_data_and_loss(args, config, arch_name, seed):
     """...TBD..."""
 
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root, 
-                              split_ratio = config.data.smallscale.split_ratio, seed = seed)
+                              split_ratio = config.data.smallscale.split_ratio, 
+                              label_filter=config.data.smallscale.label_filter,
+                              seed = seed, convert_to_rgb='ResNet' in args.arch)
     else:
         data = dataset.IMAGENET(config.data.largescale.root, 
                                 protocol_root = config.data.largescale.protocol, 
@@ -71,7 +93,7 @@ def get_data_and_loss(args, config, epochs, seed):
                                 is_verbose=True)
     
     if args.approach == "SoftMax":
-        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=0)
+        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
         loss_func=nn.CrossEntropyLoss(reduction='mean', ignore_index=-1)
     
     elif args.approach =="Garbage":
@@ -90,11 +112,11 @@ def get_data_and_loss(args, config, epochs, seed):
 
     elif args.approach == 'OvR':
         training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
-        loss_func=losses.OvRLoss(num_of_classes=num_classes, loss_config=config.loss.ovr, training_data=training_data)
+        loss_func=losses.OvRLoss(num_of_classes=num_classes, mode=config.loss.ovr.mode, training_data=training_data)
 
     elif args.approach == "OpenSetOvR":
         training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
-        loss_func=losses.OSOvRLoss(num_of_classes=num_classes, loss_config=config.loss.osovr, training_data=training_data)
+        loss_func=losses.OSOvRLoss(num_of_classes=num_classes, sigma=config.loss.osovr.sigma.dict()[arch_name], mode=config.loss.osovr.mode, training_data=training_data)
 
     return dict(
                 loss_func=loss_func,
@@ -103,7 +125,41 @@ def get_data_and_loss(args, config, epochs, seed):
                 num_classes = num_classes
             )
 
-def train(args, net, optimizer, train_data_loader, loss_func, epoch, num_classes):
+
+# Taken from:
+# https://github.com/Lance0218/Pytorch-DistributedDataParallel-Training-Tricks/
+class EarlyStopping:
+    """ Stops the training if validation loss/metrics doesn't improve after a given patience"""
+    def __init__(self, patience=100, delta=0):
+        """
+        Args:
+            patience(int): How long wait after last time validation loss improved. Default: 100
+            delta(float): Minimum change in the monitored quantity to qualify as an improvement
+                            Default: 0
+        """
+        self.patience = patience
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.delta = delta
+
+    def __call__(self, metrics, loss=True):
+        if loss is True:
+            score = -metrics
+        else:
+            score = metrics
+
+        if self.best_score is None:
+            self.best_score = score
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self.counter = 0
+
+def train(args, net, optimizer, train_data_loader, loss_func, num_classes, debug=False):
 
     loss_history = []
     train_accuracy = torch.zeros(2, dtype=int)
@@ -112,6 +168,7 @@ def train(args, net, optimizer, train_data_loader, loss_func, epoch, num_classes
     
     # update the network weights
     num_batch = 0
+    grad_results, fc2_weights_results, layers = [], [], []
     for x, y in train_data_loader:
         x = tools.device(x)
         y = tools.device(y)
@@ -152,11 +209,21 @@ def train(args, net, optimizer, train_data_loader, loss_func, epoch, num_classes
 
         loss_history.append(loss)
         loss.backward()
-        optimizer.step()
 
+        # DEBUG : Check for vanishing or exploding gradient
+        if debug:
+            batch_grad, layers = check_grad_flow(net.named_parameters())
+            batch_fc2_weights = check_fc2_weights(net)   
+
+            grad_results.append(batch_grad)
+            fc2_weights_results.append(batch_fc2_weights)
+        
+        optimizer.step()
         num_batch += 1
 
-    return loss_history, train_accuracy, train_confidence
+    debug_results = (grad_results, layers, fc2_weights_results)
+
+    return loss_history, train_accuracy, train_confidence, debug_results
 
 def validate(args, net, val_data_loader, loss_func, epoch, num_classes):
 
@@ -230,6 +297,14 @@ def worker(args, config, seed):
     lr = config.opt.lr
     lr_decay = config.opt.decay
     lr_gamma = config.opt.gamma
+    if 'LeNet' in args.arch:
+        arch_name = 'LeNet'
+        if 'plus_plus' in args.arch:
+            arch_name = 'LeNet_plus_plus'
+    elif 'ResNet_50' in args.arch:
+        arch_name = 'ResNet_50'
+    else:
+        arch_name = None
 
     # SETTING. Directory
     results_dir = pathlib.Path(f"{args.scale}/_s{seed}/{args.arch}/{args.approach}")
@@ -239,7 +314,7 @@ def worker(args, config, seed):
     writer = SummaryWriter(logs_dir)
 
     # SETTING. Dataset and Loss function
-    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config, epochs, seed).items()))[-1]
+    loss_func, training_data, validation_data, num_classes = list(zip(*get_data_and_loss(args, config, arch_name, seed).items()))[-1]
     
     # SETTING. DataLoader
     train_data_loader = torch.utils.data.DataLoader(
@@ -258,21 +333,11 @@ def worker(args, config, seed):
     )
 
     # SETTING. NN Architecture
-    if 'LeNet' in args.arch:
-        arch_name = 'LeNet'
-        if 'plus_plus' in args.arch:
-            arch_name = 'LeNet_plus_plus'
-    elif 'ResNet_18' in args.arch:
-        arch_name = 'ResNet_18'
-    elif 'ResNet_50' in args.arch:
-        arch_name = 'ResNet_50'
-    else:
-        arch_name = None
     net = architectures.__dict__[arch_name](use_BG=args.approach == "Garbage",
-                                            # init_weights=args.approach == "OpenSetOvR",
-                                            init_weights=False,
                                             num_classes=num_classes,
-                                            final_layer_bias=False)
+                                            final_layer_bias=False,
+                                            feat_dim=config.arch.feat_dim,
+                                            is_osovr=args.approach == "OpenSetOvR")
     net = tools.device(net)
     if args.debug:
         model_file_history = model_file.replace('.model', f"_0.model")
@@ -297,19 +362,37 @@ def worker(args, config, seed):
         f"Results: {model_file} \n"
           )
 
+
+    # # SETTING. Early Stopping
+    # if args.scale == 'SmallScale':
+    #     early_stopping = None
+    # else:
+    #     early_stopping = EarlyStopping(patience=5)
+
     # TRAINING
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     print("Trainig Start!")
 
     for epoch in range(1, epochs + 1, 1):
         t0 = time.time() # Check a duration of one epoch.
-
-        loss_history, train_accuracy, train_confidence = train(args, net, 
+        loss_history, train_accuracy, train_confidence, debug_info = train(args, net, 
                                                                   optimizer, 
                                                                   train_data_loader, 
-                                                                  loss_func, 
-                                                                  epoch, num_classes)
-        
+                                                                  loss_func, num_classes, debug=config.training_debug)
+        # print(net.fc2.weight, net.fc2.weight.shape)
+        # w = net.fc2.weight ** 2
+        # print(torch.sum(w, dim=0), torch.sum(w, dim=1))
+        # assert False, "Terminated"
+
+        # DEBUG : for gradient check
+        if config.training_debug:
+            debug_results_dir = results_dir/'Debug'
+            debug_results_dir.mkdir(parents=True, exist_ok=True)
+            np.save(debug_results_dir/f'grad_results_{epoch}.npy',np.array(debug_info[0]))
+            np.save(debug_results_dir/f'layers.npy',np.array(debug_info[1]))
+            np.save(debug_results_dir/f'fc2_weights_results_{epoch}.npy',np.array(debug_info[2]))
+            print("Training debug info save done!")
+
         # metrics on validation set
         val_loss, val_accuracy, val_confidence = validate(args, net, 
                                                              val_data_loader, 
@@ -331,7 +414,7 @@ def worker(args, config, seed):
             if args.debug:
                 model_file_history = model_file.replace('.model', f"_{epoch}.model")
                 torch.save(net.state_dict(), model_file_history)
-            
+
 
         # log statistics
         epoch_running_loss = torch.mean(torch.tensor(loss_history))
@@ -358,10 +441,15 @@ def worker(args, config, seed):
               f"UnConf {float(val_confidence[2] / val_confidence[3]):.5f} "
               f"SAVING MODEL -- {curr_score:.3f} {save_status}")
 
+        # # Early stopping
+        # early_stopping(metrics=curr_score, loss=False)
+        # if early_stopping.early_stop:
+        #     logger.info("early stop")
+        #     break
+
         if lr_decay > 0:
             scheduler.step()
         
-
 if __name__ == "__main__":
 
     args = command_line_options()
@@ -388,5 +476,16 @@ if __name__ == "__main__":
     for s in args.seed:
         worker(args, config, s)
         print("Training Done!\n\n\n")
-    
+
+    # ARCH = args.arch
+    # for s in args.seed:
+    #     for item in [6,8,10]:
+    #         config.loss.osovr.sigma.dict()['ResNet_50'] = item
+    #         if item != -1:
+    #             args.arch = ARCH + f'_{item}'
+    #         else:
+    #             args.arch = ARCH
+    #         worker(args, config, s)
+    #         print("Training Done!\n\n\n")
+
     print("All training done!")

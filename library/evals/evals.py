@@ -17,7 +17,7 @@ from ..tools import device, set_device_cpu, get_device, print_table
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
     
-def load_network(args, config, which, num_classes, seed=-1):
+def load_network(args, config, which, num_classes, is_osovr=False, seed=-1):
 
     if seed == -1:
         network_file = os.path.join(config.arch.model_root, f"{args.scale}/{args.arch}/{which}")
@@ -41,7 +41,8 @@ def load_network(args, config, which, num_classes, seed=-1):
             arch_name = None
         net = architectures.__dict__[arch_name](use_BG=which=="Garbage",
                                                 num_classes=num_classes,
-                                                final_layer_bias=False,)
+                                                final_layer_bias=False,
+                                                is_osovr=is_osovr)
         checkpoint = torch.load(network_file, map_location=torch.device('cpu')) 
 
         # if config.need_sync:
