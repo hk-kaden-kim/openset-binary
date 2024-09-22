@@ -57,6 +57,8 @@ def list_model_files(folder_path):
 
 def deep_feat_viz_sample_progress(appr, seed, arch, scale, is_verbose=False, save_plot=None):
 
+    assert "plus_plus" in arch, f"Check the given approach : {appr}. It could have more than 2 features."
+
     # load dataset
     if scale == 'SmallScale':
         data = dataset.EMNIST('/local/scratch/hkim',
