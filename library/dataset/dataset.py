@@ -132,7 +132,7 @@ class EMNIST():
             val_letters = Subset(self.train_letters, val_letters_idxs)
             val_letters = EmnistUnknownDataset(val_letters,has_background_class)
             train_emnist = ConcatDataset([tr_mnist])
-            val_emnist = ConcatDataset([val_mnist])
+            val_emnist = ConcatDataset([val_mnist, val_letters])
         else:
             # Reduce the size of negatives in training set
             if size_train_negatives > 0:
@@ -245,7 +245,7 @@ class IMAGENET():
             )
 
 
-        # Reduce the size of negatives in training set
+        # If we need to reduce the size of negatives in training set
         if size_train_negatives == 0:
             if is_verbose: print(f"# of negatives for training: {size_train_negatives}")
             train_ds.remove_negative_label()
@@ -253,17 +253,6 @@ class IMAGENET():
             if is_verbose: print(f"# of negatives for training: {train_ds.get_negatives_size()}")
         else:
             assert False, f"Not avilable to set the size of Negatives in Large-scale training dataset"
-        
-        # else:
-        #     if size_train_negatives > 0:
-        #         assert train_ds.get_negatives_size() > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {train_ds.get_negatives_size()}."
-        #         tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
-        #         if is_verbose:
-        #             print(f"# of negatives for training: {size_train_negatives} {len(train_ds)}")
-        #     elif size_train_negatives == -1:
-        #         if is_verbose:
-        #             print(f"# of negatives for training: -1 >> ALL {train_ds.get_negatives_size()}")
-
 
         if has_background_class:
             train_ds.replace_negative_label()
@@ -271,20 +260,22 @@ class IMAGENET():
 
         return (train_ds, val_ds, train_ds.label_count)
 
-    def get_test_set(self, has_background_class=False):
+    def get_test_set(self, has_background_class=False, is_verbose=False):
 
+        # Initialize
+        # Known + Negative + Unknown
         test_dataset = ImagenetDataset(
                 csv_file=self.test_file,
                 imagenet_path=self.dataset_root,
                 transform=self.val_data_transform
             )   
-
+        # Known + Negative
         test_neg_dataset = ImagenetDataset(
                 csv_file=self.test_file,
                 imagenet_path=self.dataset_root,
                 transform=self.val_data_transform
             )   
-
+        # Known + Unknown
         test_unkn_dataset = ImagenetDataset(
                 csv_file=self.test_file,
                 imagenet_path=self.dataset_root,
@@ -295,20 +286,20 @@ class IMAGENET():
             test_dataset.replace_negative_label()
             test_dataset.replace_unknown_label()
             
-            test_neg_dataset.replace_negative_label()
-            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] >= 0]
+            test_neg_dataset.replace_negative_label() # Replace negative(-1) to 'Last known label + 1'
+            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] >= 0]   # filter out: unknown (-2)
 
-            test_unkn_dataset.replace_unknown_label()
-            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] >= 0]
+            test_unkn_dataset.replace_unknown_label() # Replace unknown(-2) to 'Last known label + 1'
+            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] >= 0]    # filter out: negative (-1)
 
         else:
-            test_dataset.dataset[1] = test_dataset.dataset[1].replace(-2, -1)
+            test_dataset.dataset[1] = test_dataset.dataset[1].replace(-2, -1) # Replace unknown(-2) to -1
 
-            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] > -2]
+            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] > -2] # filter out: unknown (-2)
 
-            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] != -1]
+            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] != -1]   # filter out: negative (-1)
             test_unkn_dataset.dataset[1] = test_unkn_dataset.dataset[1].replace(-2, -1)
-        
+
         return test_dataset, test_neg_dataset, test_unkn_dataset
 
 

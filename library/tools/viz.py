@@ -2,6 +2,8 @@ import os
 import numpy as np
 import itertools
 from matplotlib import pyplot as plt
+import matplotlib as mpl
+
 import torch
 from torch.nn import functional as F
 from .. import losses
@@ -34,7 +36,7 @@ def get_probs(pnts, which, net, config, gpu=None):
         probs = F.sigmoid(result).detach()
     elif which == 'OpenSetOvR':
         osovr_act = losses.OpenSetOvR(config.osovr_sigma.dict()[net.__class__.__name__])
-        probs = osovr_act(result, net.fc2.weight.data).detach()
+        probs = osovr_act(result).detach()
     else:
         probs = F.softmax(result, dim=1).detach()
     probs = torch.max(probs, dim=1).values
@@ -60,18 +62,23 @@ def deep_features_plot(which, net, config, gpu, unkn_gt_label, pred_results, res
     labels = train_gt[known_tag]
     neg_features = train_feats[unknown_tag]
     
-    plotter_2D(pos_features, labels, 
-                         neg_features=None, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/1_{}_train.{}')
+    # plotter_2D(pos_features, labels, 
+    #                      neg_features=None, heat_map=False, 
+    #                      final=True, file_name=str(results_dir)+'/1_{}_train.{}')
 
+    # plotter_2D(pos_features, labels, 
+    #                      neg_features=None, heat_map=True, 
+    #                      final=True, file_name=str(results_dir)+'/2_{}_heat_train.{}',
+    #                      which=which, net=net, gpu=gpu, config=config)
+
+    # plotter_2D(pos_features, labels, 
+    #                      neg_features=neg_features, heat_map=False, 
+    #                      final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
+    
     plotter_2D(pos_features, labels, 
-                         neg_features=None, heat_map=True, 
-                         final=True, file_name=str(results_dir)+'/2_{}_heat_train.{}',
+                         neg_features=neg_features, heat_map=True, 
+                         final=True, file_name=str(results_dir)+'/4_{}_heat_train_final.{}',
                          which=which, net=net, gpu=gpu, config=config)
-
-    plotter_2D(pos_features, labels, 
-                         neg_features=neg_features, heat_map=False, 
-                         final=True, file_name=str(results_dir)+'/3_{}_train_neg.{}')
     print("Done!")
 
     # Deep Feature Plotting : Testing Samples (+ Negatives)
@@ -179,8 +186,8 @@ def plotter_2D(
         try:
             # min_x, max_x = np.min(pos_features[:, 0]), np.max(pos_features[:, 0])
             # min_y, max_y = np.min(pos_features[:, 1]), np.max(pos_features[:, 1])
-            max_x = np.max(np.abs(pos_features[:, 0]))
-            max_y = np.max(np.abs(pos_features[:, 1]))
+            max_x = np.percentile(np.abs(pos_features[:, 0]),95)
+            max_y = np.percentile(np.abs(pos_features[:, 1]),95)
             xy_range = max(max_x, max_y).item()
             x = np.linspace(-1 * xy_range * 1.5, xy_range * 1.5, 500)
             y = np.linspace(-1 * xy_range * 1.5, xy_range * 1.5, 500)
@@ -194,49 +201,45 @@ def plotter_2D(
                 y,
                 np.array(res).reshape(500, 500).transpose(),
                 # cmap='gray',
+                cmap=mpl.colors.LinearSegmentedColormap.from_list("", ['gray','white']),
                 rasterized=True,
-                shading="auto",
+                # shading="gray",
+                shading='auto',
                 vmin=0.0,
                 vmax=1.0,
             )
-            fig.colorbar(heat_map, ax=ax, fraction=0.046, pad=0.04)
+            # fig.colorbar(heat_map, ax=ax, fraction=0.046, pad=0.04)
         except Exception as error:
             print("An exception occurred:", error)
-    
-    colors = colors_global
-    if neg_features is not None:
-        # Remove black color from knowns
-        colors = colors_global[:-1]
 
-    # The following code segment needs to be improved
-    colors_with_repetition = colors.tolist()
-    for i in range(int(len(set(labels.tolist())) / colors.shape[0])):
-        colors_with_repetition.extend(colors.tolist())
-    colors_with_repetition.extend(
-        colors.tolist()[: int(colors.shape[0] % len(set(labels.tolist())))]
-    )
-    colors_with_repetition = np.array(colors_with_repetition)
-
-    labels_to_int = np.zeros(labels.shape[0])
-    for i, l in enumerate(set(labels.tolist())):
-        labels_to_int[labels == l] = i
+    CMAP_C = mpl.color_sequences['Set3']
+    color_maps = [CMAP_C[int(i)] for i in labels.tolist()]
 
     ax.scatter(
         pos_features[:, 0],
         pos_features[:, 1],
-        c=colors_with_repetition[labels_to_int.astype(int)],
+        c=color_maps,
         edgecolors="none",
         s=5,
     )
+
     if neg_features is not None:
+        # assert False, f"\n\n{type(neg_features)}\n{neg_features.shape}\n{pos_features.shape}"
+        rand_idx = np.random.randint(neg_features.shape[0], size=pos_features.shape[0]//len(np.unique(labels)))
+        # assert False, f"{rand_idx.shape}"
         ax.scatter(
-            neg_features[:, 0],
-            neg_features[:, 1],
-            c="k", alpha=0.2,
+            neg_features[rand_idx, 0],
+            neg_features[rand_idx, 1],
+            color="black", alpha=0.2,
             edgecolors="none",
             s=15,
             marker="*",
         )
+
+    if heat_map:
+        ax.set_xlim((-1 * xy_range * 1.5, xy_range * 1.5))
+        ax.set_ylim((-1 * xy_range * 1.5, xy_range * 1.5))
+
     if final:
         fig.gca().spines["right"].set_position("zero")
         fig.gca().spines["bottom"].set_position("zero")
@@ -251,26 +254,13 @@ def plotter_2D(
             labelleft=False,
             labelright=False,
         )
-        ax.axis("equal")
+        # ax.axis("equal")
+
     try:
         fig.savefig(file_name.format("2D_plot", "png"), bbox_inches="tight")
     except Exception as error:
         print("An exception occurred:", error)
-        # fig.savefig(file_name.format("2D_plot", "pdf"), bbox_inches="tight")
     fig.show()
-    if neg_features is not None:
-        try:
-            plot_histogram(
-                pos_features,
-                neg_features,
-                pos_labels=pos_labels,
-                neg_labels=neg_labels,
-                title=title,
-                file_name=file_name.format("hist", "pdf"),
-            )
-        except Exception as error:
-            print("An exception occurred:", error)
-            
     plt.close()
 
 def plot_OSRC(to_plot, no_of_false_positives=None, filename=None, title=None):
