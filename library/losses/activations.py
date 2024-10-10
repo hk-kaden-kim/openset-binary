@@ -30,14 +30,16 @@ class OpenSetOvR(nn.Module):
 
     """
 
-    def __init__(self, sigma) -> None:
-        print("\n↓↓↓ Activation setup ↓↓↓")
-        print(f"{self.__class__.__name__} Activation Loaded!")
+    def __init__(self, sigma, is_verbose=True) -> None:
         super().__init__()
         self.sigma = sigma
-        print(f'Sigma : {self.sigma}')
+
+        if is_verbose:
+            print("\n↓↓↓ Activation setup ↓↓↓")
+            print(f"{self.__class__.__name__} Activation Loaded!")
+            print(f'Sigma : {self.sigma}')
     
-    def forward(self, logits: torch.Tensor, last_layer_weights, norm=True) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor) -> torch.Tensor:
 
         # Multiply scale factors to apply the same margin for every decision boundary.
         # if norm: 

@@ -230,18 +230,16 @@ class Linear_w_norm(nn.Module):
         # nn.init.normal_(self.weight, mean=self.mean, std=self.std)
 
     def forward(self, feats:torch.Tensor):
-        # print(self.weight)
         # with torch.no_grad():
         #     self.weight.data = F.normalize(self.weight.data, dim=0) # normalize weights in column-wise
         logits = torch.mm(feats, self.weight)
         with torch.no_grad():
             scale = 1/torch.norm(self.weight, p=2, dim=0)
         logits = logits * scale
-        # print(self.weight)
-        # print(logits)
-        # assert False, "Terminated"
         return logits
     
+    def extra_repr(self) -> str:
+        return f'in_features={self.in_features}, out_features={self.out_features}'
 
 
 

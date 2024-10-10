@@ -57,7 +57,7 @@ def accuracy(scores, target):
 
 #     return torch.tensor((correct, total))
 
-def confidence(scores, labels, offset=0., unknown_class = -1, last_valid_class = None):
+def confidence(scores:torch.Tensor, labels:torch.Tensor, offset=0., unknown_class = -1, last_valid_class = None):
     """ Returns model's confidence, Taken from https://github.com/Vastlab/vast/tree/main/vast.
 
     Args:
