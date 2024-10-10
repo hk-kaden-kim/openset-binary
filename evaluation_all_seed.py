@@ -21,7 +21,6 @@ import pathlib
 
 labels={
   "SoftMax" : "Plain SoftMax",
-  "Garbage" : "Garbage Class",
   "EOS" : "Entropic Open-Set",
   "OvR" : "One-vs-Rest Classifiers",
   "OpenSetOvR": "Open-Set OvR Classifiers"
@@ -37,6 +36,7 @@ def command_line_options():
 
     parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
+    parser.add_argument("--category", "-ct", required=True, choices=['_RQ1','_RQ2','_RQ3','_Discussion','_Tuning'])
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
     parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
@@ -54,11 +54,11 @@ def evaluate(args, config, seed):
     else:
         data = dataset.IMAGENET(config.data.largescale.root,
                                 protocol_root = config.data.largescale.protocol, 
-                                protocol = int(args.scale.split('_')[1]))
+                                protocol = int(args.scale.split('_')[1]), is_verbose=True)
 
     # Save or Plot results
     results = {}
-    root = pathlib.Path(f"{args.scale}/_s{seed}/eval_{args.arch}")
+    root = pathlib.Path(f"{args.scale}/_s{seed}/{args.category}/eval_{args.arch}")
     root.mkdir(parents=True, exist_ok=True)
 
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -66,7 +66,7 @@ def evaluate(args, config, seed):
         f"Configuration Details \n"
         f"Model Root: {config.arch.model_root}\n"
         f"Save Predictions: {config.pred_save==1}\n"
-        f"Save OSCR results: {config.oscr_save==1}\n"
+        f"Save OSCR results: {config.openset_save==1}\n"
           )
 
     for which in args.approach:
@@ -89,17 +89,12 @@ def evaluate(args, config, seed):
               f"Results: {results_dir}\n")
 
         # Load evaluation dataset
-        if which == 'Garbage':
-            train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=True)
-            _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=True)
-            unkn_gt_label = num_classes
-        else:
-            train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
-            _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=False)
-            unkn_gt_label = -1
+        train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
+        _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=False)
+        unkn_gt_label = -1
         
         # Load weights of the model
-        net = evals.load_network(args, config, which, num_classes, is_osovr=which=='OpenSetOvR', seed = seed)
+        net = evals.load_network(args, config, which, num_classes, is_osovr=which=='OpenSetOvR', seed = seed) # 
         if net is None:
             print(f"Weights are not loaded on the network!\n{which} Evaluation Terminated\n")
             continue
@@ -127,20 +122,15 @@ def evaluate(args, config, seed):
         elif which == 'OpenSetOvR':
             osovr_act = losses.OpenSetOvR(config.osovr_sigma.dict()[net.__class__.__name__])
             if args.scale == 'SmallScale':
-                train_probs = osovr_act(tools.device(torch.tensor(pred_results['train'][1])), net.fc2.weight.data).detach().cpu().numpy()
-            test_neg_probs = osovr_act(tools.device(torch.tensor(pred_results['test_neg'][1])), net.fc2.weight.data).detach().cpu().numpy()
-            test_unkn_probs  = osovr_act(tools.device(torch.tensor(pred_results['test_unkn'][1])), net.fc2.weight.data).detach().cpu().numpy()
+                train_probs = osovr_act(tools.device(torch.tensor(pred_results['train'][1]))).detach().cpu().numpy()
+            test_neg_probs = osovr_act(tools.device(torch.tensor(pred_results['test_neg'][1]))).detach().cpu().numpy()
+            test_unkn_probs  = osovr_act(tools.device(torch.tensor(pred_results['test_unkn'][1]))).detach().cpu().numpy()
         
         else:
             if args.scale == 'SmallScale':
                 train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
             test_neg_probs = F.softmax(torch.tensor(pred_results['test_neg'][1]), dim=1).detach().numpy()
             test_unkn_probs  = F.softmax(torch.tensor(pred_results['test_unkn'][1]), dim=1).detach().numpy()
-
-        # # remove the labels for the unknown class in case of Garbage Class
-        # if which == "Garbage":
-        #     test_neg_probs = test_neg_probs[:,:-1]
-        #     test_unkn_probs = test_unkn_probs[:,:-1]
         
         if args.scale == 'SmallScale':
             pred_results['train'].append(train_probs)
@@ -148,64 +138,65 @@ def evaluate(args, config, seed):
         pred_results['test_unkn'].append(test_unkn_probs)
 
         if config.pred_save:
-            evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
-            # evals.eval_pred_save(pred_results, results_dir.joinpath('pred'), save_feats = True)
+            evals.save_eval_pred(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
 
-        if args.scale == 'SmallScale' and 'LeNet_plus_plus' in args.arch:
+        if 'LeNet_plus_plus' in args.arch:
             tools.viz.deep_features_plot(which, net,
                                          gpu=tools.get_device(), config=config,
                                          unkn_gt_label=unkn_gt_label, 
                                          pred_results=pred_results,
                                          results_dir=results_dir,)
 
-        print('Get OSCR results')
-        # remove the labels for the unknown class in case of Garbage Class
-        if which == "Garbage":
-            pred_results['test_neg'][-1] = pred_results['test_neg'][-1][:,:-1]
-            pred_results['test_unkn'][-1] = pred_results['test_unkn'][-1][:,:-1]
-        print("Test Set with 'Known Unknown Samples'...")
-        ccr, fpr_neg = evals.get_oscr_curve(pred_results['test_neg'][0], pred_results['test_neg'][3]
-                                            , unkn_gt_label, at_fpr=None)
-        print("Test Set with 'Unknown Unknown Samples'...")
-        _, fpr_unkn = evals.get_oscr_curve(pred_results['test_unkn'][0], pred_results['test_unkn'][3]
-                                           , unkn_gt_label,  at_fpr=None)
+        print('Get Open-set evaluation results')
+        print("1. Test Set with 'Known Unknown Samples'...")
+        ccr, fpr_neg, urr_neg, osa_neg, thrs_neg = evals.get_openset_perf(pred_results['test_neg'][0], 
+                                                                             pred_results['test_neg'][3],
+                                                                             unkn_gt_label, at_fpr=None, is_verbose=True)
+        print("2. Test Set with 'Unknown Unknown Samples'...")
+        _, fpr_unkn, urr_unkn, osa_unkn, _ = evals.get_openset_perf(pred_results['test_unkn'][0], 
+                                                                               pred_results['test_unkn'][3],
+                                                                               unkn_gt_label,  at_fpr=None, is_verbose=True)
         print('Done!\n')
 
-        results[which] = (ccr, fpr_neg, fpr_unkn)
+        # results[which] = (ccr, fpr_neg, fpr_unkn)
 
-        if config.oscr_save:
-            evals.oscr_save(ccr, fpr_neg, fpr_unkn, results_dir.joinpath('oscr'))
+        if config.openset_save:
+            evals.save_openset_perf(ccr, thrs_neg,
+                                    fpr_neg, fpr_unkn, 
+                                    urr_neg, urr_unkn, 
+                                    osa_neg, osa_unkn, 
+                                    results_dir.joinpath('openset'))
 
         torch.cuda.empty_cache()
         print('Release Unoccupied cache in GPU!')
 
-    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    print(f"Final OSCR Plot for {args.approach}")
-    try:
-        # plot with known unknowns
-        pyplot.figure(figsize=(10,5))
-        for which, res in results.items():
-            pyplot.semilogx(res[1], res[0], label=labels[which])
-        pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        pyplot.xlabel("False Positive Rate")
-        pyplot.ylabel("Correct Classification Rate")
-        pyplot.title("Negative Set")
-        pyplot.tight_layout()
-        pyplot.savefig(root.joinpath('oscr_neg.png'), bbox_inches="tight") 
+    # print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    # print(f"Final OSCR Plot for {args.approach}")
+    # try:
+    #     # plot with known unknowns
+    #     pyplot.figure(figsize=(10,5))
+    #     for which, res in results.items():
+    #         pyplot.semilogx(res[1], res[0], label=labels[which])
+    #     pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    #     pyplot.xlabel("False Positive Rate")
+    #     pyplot.ylabel("Correct Classification Rate")
+    #     pyplot.title("Negative Set")
+    #     pyplot.tight_layout()
+    #     pyplot.savefig(root.joinpath('oscr_neg.png'), bbox_inches="tight") 
         
-        # plot with unknown unknowns
-        pyplot.figure(figsize=(10,5))
-        for which, res in results.items():
-            pyplot.semilogx(res[2], res[0], label=labels[which])
-        pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-        pyplot.xlabel("False Positive Rate")
-        pyplot.ylabel("Correct Classification Rate")
-        pyplot.title("Unknown Set")
-        pyplot.tight_layout()
-        pyplot.savefig(root.joinpath('oscr_unkn.png'), bbox_inches="tight") 
+    #     # plot with unknown unknowns
+    #     pyplot.figure(figsize=(10,5))
+    #     for which, res in results.items():
+    #         pyplot.semilogx(res[2], res[0], label=labels[which])
+    #     pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    #     pyplot.xlabel("False Positive Rate")
+    #     pyplot.ylabel("Correct Classification Rate")
+    #     pyplot.title("Unknown Set")
+    #     pyplot.tight_layout()
+    #     pyplot.savefig(root.joinpath('oscr_unkn.png'), bbox_inches="tight") 
 
-    finally:
-        print('Done!\n')
+    # finally:
+    #     print('Done!\n')
 
 if __name__ == '__main__':
 
@@ -223,6 +214,7 @@ if __name__ == '__main__':
         f"Execution Time: {time.strftime('%d %b %Y %H:%M:%S')} \n"
         f"GPU: {args.gpu} \n"
         f"Dataset Scale: {args.scale} \n"
+        f"Category: {args.category} \n"
         f"Architecture: {args.arch} \n"
         f"Approach: {args.approach} \n"
         f"Configuration: {args.config} \n"
@@ -232,4 +224,5 @@ if __name__ == '__main__':
 
     for s in args.seed:
         evaluate(args, config, s)
-        print("Evaluation Done!\n\n\n")
+        print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        print("\n\nEvaluation Done!")

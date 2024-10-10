@@ -9,7 +9,8 @@ epochs:
   smallscale: 70 # 70
   largescale: 120 # 120
 num_workers: 5      # Dataloader number of workers
-training_debug: False
+training_debug_1: False     # Check featrue space. Only with LeNet++
+training_debug_2: False     # Check weights and gradient
 
 ##########################################
 # Data Parameters
@@ -23,7 +24,7 @@ data:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
   train_neg_size: -1 # -1 for using all. SmallScale : < 42000 (42240)  LargeScale_2 : < 60000 (60689)
-
+  # 1000 5000 10000 20000 30000 -1
 ##########################################
 # Archtecture Parameters
 ##########################################
@@ -38,24 +39,24 @@ loss:
     unkn_weight: 1
   osovr:
     sigma:        # LeNet_plus_plus : 6     LeNet : 8       ResNet_50 : 8
-      LeNet_plus_plus: 6
-      LeNet: 8
-      ResNet_50: 6
+      LeNet_plus_plus: 8    # 6 (04.10.2024)
+      LeNet: 8            # 6 (04.10.2024)
+      ResNet_50: 8
     mode:
-      # C: 'batch'   # 'global' or 'batch'
-      # F: 2        # 0.2 0.6 1 2 3             
-      # M: 0.4      # 0 or 0.2 or 0.4 or 0.6 or 0.8
+      # C: 'global'   # Small : 'global'     Large : 'global'
+      # F: 2       # Small : 2    Large : 2            
+      M: 0.4      # Small : 0     Large : 0.4
   ovr:
     mode:
-      # C: 'batch'   # 'global' or 'batch'
-      # F: 0        # 0.2 0.6 1 2 3
-      # M: 0      # 0 or 0.2 or 0.4 or 0.6 or 0.8
+      # C: 'batch'   # Small : 'batch'     Large : 'batch'
+      # F: 2        # Small : 0.2    Large : 2            
+      M: 0.6      # Small : 0.2     Large : 0.6
 
 ##########################################
 # Optimizer Parameters
 ##########################################
-opt:
-  solver: adam  # Two options: {adam, sgd}
-  lr: 1.e-3   # 1.e-3. Initial learning rate
+opt:    # Adam optimizer
+  lr: 1.e-3  # 1.e-3 / 1.e-4 (P3 OSOvR). Initial learning rate
+  lr2: 1.e-4  # P3 OSOvR, P2 M 0.4 OvR
   decay: 0    # 0. Number of epochs to wait for each learning rate reduction. 0 means no decay
   gamma: 1    # 1. Factor to reduce the learning rate
