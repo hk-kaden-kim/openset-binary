@@ -43,14 +43,14 @@ loss:
       LeNet: 8            # 6 (04.10.2024)
       ResNet_50: 8
     mode:
-      # C: 'global'   # Small : 'global'     Large : 'global'
-      # F: 2       # Small : 2    Large : 2            
-      M: 0.4      # Small : 0     Large : 0.4
+      # C: 'batch'   # Small : 'global'     Large : 'global'
+      F: 1       # Small : 0.6    Large : 1            
+      # M: 0.6      # Small : 0     Large : 0.6
   ovr:
     mode:
-      # C: 'batch'   # Small : 'batch'     Large : 'batch'
-      # F: 2        # Small : 0.2    Large : 2            
-      M: 0.6      # Small : 0.2     Large : 0.6
+      C: 'global'   # Small : 'batch'     Large : 'global'
+      # F: 0.6        # Small : 0.6    Large : 2            
+      # M: 0.6      # Small : 0.2     Large : 0.6
 
 ##########################################
 # Optimizer Parameters

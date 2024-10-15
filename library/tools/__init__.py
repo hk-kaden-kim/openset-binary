@@ -60,9 +60,9 @@ def train_command_line_options():
     )
 
     parser.add_argument("--config", "-cf", default='config/train.yaml', help="The configuration file that defines the experiment")
-    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of training dataset.")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of training dataset.")
     parser.add_argument("--arch", "-ar", required=True)
-    parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'EOS', 'OvR', 'OpenSetOvR'])
+    parser.add_argument("--approach", "-ap", required=True, choices=['SoftMax', 'EOS', 'OvR', 'OpenSetOvR', 'etc'])
     parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
     parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 

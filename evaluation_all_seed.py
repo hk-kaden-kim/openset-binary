@@ -35,7 +35,7 @@ def command_line_options():
     )
 
     parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
-    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
     parser.add_argument("--category", "-ct", required=True, choices=['_RQ1','_RQ2','_RQ3','_Discussion','_Tuning'])
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
@@ -79,7 +79,7 @@ def evaluate(args, config, seed):
         results_dir = root.joinpath(which)
         results_dir.mkdir(parents=True, exist_ok=True)
 
-        pred_results = {'train':None, 'test_neg':None, 'test_unkn':None, 'test_all':None}
+        pred_results = {'val':None, 'test_neg':None, 'test_unkn':None, 'test_all':None}
 
         if args.scale == 'SmallScale':
             batch_size = config.batch_size.smallscale
@@ -89,7 +89,7 @@ def evaluate(args, config, seed):
               f"Results: {results_dir}\n")
 
         # Load evaluation dataset
-        train_set_neg, _, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
+        _, val_set_neg, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size, has_background_class=False)
         _, test_set_neg, test_set_unkn = data.get_test_set(is_verbose=True, has_background_class=False)
         unkn_gt_label = -1
         
@@ -100,40 +100,40 @@ def evaluate(args, config, seed):
             continue
         
         print("Execute predictions!")
-        if args.scale == 'SmallScale':
-            print(f"{time.strftime('%H:%M:%S')} Training Set...")
-            pred_results['train'] = evals.extract(train_set_neg, net, batch_size, is_verbose=True)
-            print(f"{time.strftime('%H:%M:%S')} Done!")
-        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Known Unknown Samples'...")
+        # if args.scale == 'SmallScale':
+        print(f"{time.strftime('%H:%M:%S')} Validation Set with 'Negative samples'...")
+        pred_results['val'] = evals.extract(val_set_neg, net, batch_size, is_verbose=True)
+        print(f"{time.strftime('%H:%M:%S')} Done!")
+        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Negative Samples'...")
         pred_results['test_neg'] = evals.extract(test_set_neg, net,  batch_size, is_verbose=True)
         print(f"{time.strftime('%H:%M:%S')} Done!")
-        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Unknown Unknown Samples'...")
+        print(f"{time.strftime('%H:%M:%S')} Test Set with 'Unknown Samples'...")
         pred_results['test_unkn'] = evals.extract(test_set_unkn, net, batch_size, is_verbose=True)
         print(f"{time.strftime('%H:%M:%S')} Done!")
         print()
 
         # Calculate Probs
         if which == "OvR":
-            if args.scale == 'SmallScale':
-                train_probs = F.sigmoid(torch.tensor(pred_results['train'][1])).detach().numpy()
+            # if args.scale == 'SmallScale':
+            val_probs = F.sigmoid(torch.tensor(pred_results['val'][1])).detach().numpy()
             test_neg_probs = F.sigmoid(torch.tensor(pred_results['test_neg'][1])).detach().numpy()
             test_unkn_probs  = F.sigmoid(torch.tensor(pred_results['test_unkn'][1])).detach().numpy()
         
         elif which == 'OpenSetOvR':
             osovr_act = losses.OpenSetOvR(config.osovr_sigma.dict()[net.__class__.__name__])
-            if args.scale == 'SmallScale':
-                train_probs = osovr_act(tools.device(torch.tensor(pred_results['train'][1]))).detach().cpu().numpy()
+            # if args.scale == 'SmallScale':
+            val_probs = osovr_act(tools.device(torch.tensor(pred_results['val'][1]))).detach().cpu().numpy()
             test_neg_probs = osovr_act(tools.device(torch.tensor(pred_results['test_neg'][1]))).detach().cpu().numpy()
             test_unkn_probs  = osovr_act(tools.device(torch.tensor(pred_results['test_unkn'][1]))).detach().cpu().numpy()
         
         else:
-            if args.scale == 'SmallScale':
-                train_probs = F.softmax(torch.tensor(pred_results['train'][1]), dim=1).detach().numpy()
+            # if args.scale == 'SmallScale':
+            val_probs = F.softmax(torch.tensor(pred_results['val'][1]), dim=1).detach().numpy()
             test_neg_probs = F.softmax(torch.tensor(pred_results['test_neg'][1]), dim=1).detach().numpy()
             test_unkn_probs  = F.softmax(torch.tensor(pred_results['test_unkn'][1]), dim=1).detach().numpy()
         
-        if args.scale == 'SmallScale':
-            pred_results['train'].append(train_probs)
+        # if args.scale == 'SmallScale':
+        pred_results['val'].append(val_probs)
         pred_results['test_neg'].append(test_neg_probs)
         pred_results['test_unkn'].append(test_unkn_probs)
 
@@ -148,55 +148,24 @@ def evaluate(args, config, seed):
                                          results_dir=results_dir,)
 
         print('Get Open-set evaluation results')
-        print("1. Test Set with 'Known Unknown Samples'...")
-        ccr, fpr_neg, urr_neg, osa_neg, thrs_neg = evals.get_openset_perf(pred_results['test_neg'][0], 
-                                                                             pred_results['test_neg'][3],
-                                                                             unkn_gt_label, at_fpr=None, is_verbose=True)
-        print("2. Test Set with 'Unknown Unknown Samples'...")
-        _, fpr_unkn, urr_unkn, osa_unkn, _ = evals.get_openset_perf(pred_results['test_unkn'][0], 
-                                                                               pred_results['test_unkn'][3],
-                                                                               unkn_gt_label,  at_fpr=None, is_verbose=True)
-        print('Done!\n')
-
-        # results[which] = (ccr, fpr_neg, fpr_unkn)
-
+        print("1. Validation Set with 'Known Unknown Samples'...")
+        ccr, fpr, urr, osa, thrs = evals.get_openset_perf(pred_results['val'][0], pred_results['val'][3], unkn_gt_label, is_verbose=True)
         if config.openset_save:
-            evals.save_openset_perf(ccr, thrs_neg,
-                                    fpr_neg, fpr_unkn, 
-                                    urr_neg, urr_unkn, 
-                                    osa_neg, osa_unkn, 
-                                    results_dir.joinpath('openset'))
+            evals.save_openset_perf('val', ccr, thrs, fpr, urr, osa, results_dir.joinpath('openset'))
 
+        print("2. Test Set with 'Known Unknown Samples'...")
+        ccr, fpr, urr, osa, thrs = evals.get_openset_perf(pred_results['test_neg'][0], pred_results['test_neg'][3], unkn_gt_label, is_verbose=True)
+        if config.openset_save:
+            evals.save_openset_perf('test_neg', ccr, thrs, fpr, urr, osa, results_dir.joinpath('openset'))
+
+        print("3. Test Set with 'Unknown Unknown Samples'...")
+        ccr, fpr, urr, osa, thrs = evals.get_openset_perf(pred_results['test_unkn'][0], pred_results['test_unkn'][3], unkn_gt_label, is_verbose=True)
+        if config.openset_save:
+            evals.save_openset_perf('test_unkn', ccr, thrs, fpr, urr, osa, results_dir.joinpath('openset'))
+
+        print('Done!\n')
         torch.cuda.empty_cache()
         print('Release Unoccupied cache in GPU!')
-
-    # print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    # print(f"Final OSCR Plot for {args.approach}")
-    # try:
-    #     # plot with known unknowns
-    #     pyplot.figure(figsize=(10,5))
-    #     for which, res in results.items():
-    #         pyplot.semilogx(res[1], res[0], label=labels[which])
-    #     pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    #     pyplot.xlabel("False Positive Rate")
-    #     pyplot.ylabel("Correct Classification Rate")
-    #     pyplot.title("Negative Set")
-    #     pyplot.tight_layout()
-    #     pyplot.savefig(root.joinpath('oscr_neg.png'), bbox_inches="tight") 
-        
-    #     # plot with unknown unknowns
-    #     pyplot.figure(figsize=(10,5))
-    #     for which, res in results.items():
-    #         pyplot.semilogx(res[2], res[0], label=labels[which])
-    #     pyplot.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    #     pyplot.xlabel("False Positive Rate")
-    #     pyplot.ylabel("Correct Classification Rate")
-    #     pyplot.title("Unknown Set")
-    #     pyplot.tight_layout()
-    #     pyplot.savefig(root.joinpath('oscr_unkn.png'), bbox_inches="tight") 
-
-    # finally:
-    #     print('Done!\n')
 
 if __name__ == '__main__':
 
@@ -226,3 +195,10 @@ if __name__ == '__main__':
         evaluate(args, config, s)
         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("\n\nEvaluation Done!")
+
+    # for s in args.seed:
+    #     for item in ['LargeScale_1','LargeScale_3']:
+    #         args.scale = item
+    #         evaluate(args, config, s)
+    #         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    #         print("\n\nEvaluation Done!")

@@ -304,21 +304,14 @@ if __name__ == "__main__":
     # ---------------------------------------------------
     ARCH = args.arch
     for s in args.seed:
-        # for item in [3,4,5]:
-            # config.data.smallscale.label_filter = [i for i in range(item)]
-            # config.data.train_neg_size = item * 5000
-        for item in ['OvR','OpenSetOvR']:
-            # config.arch.feat_dim = item
-            args.approach = item
-            if item == 'OpenSetOvR':
+        for item in [('ResNet_50_F_1','OpenSetOvR'),
+                     ('ResNet_50_C_g','OvR')]:
+            args.arch = item[0]
+            args.approach = item[1]
+            if item[1] == 'OpenSetOvR':
                 config.opt.lr = 0.0001
             else:
                 config.opt.lr = 0.001
-            # if item != -1:
-            #     if (0 < item) and (item < 1) : item = '0'+str(int(item*10))
-            #     args.arch = ARCH + f'_{item}'
-            # else:
-            #     args.arch = ARCH
             worker(args, config, s)
             print("Training Done!\n\n\n")
 
