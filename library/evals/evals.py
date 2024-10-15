@@ -5,12 +5,19 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 import warnings
 import matplotlib.pyplot as plt
-from sklearn.metrics import roc_curve, roc_auc_score, accuracy_score, balanced_accuracy_score, auc, f1_score, precision_score, average_precision_score
+
+import sklearn.metrics as metrics
+from sklearn.metrics import roc_curve, roc_auc_score, accuracy_score, balanced_accuracy_score, auc, f1_score, precision_score, average_precision_score, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.preprocessing import LabelBinarizer
 
 from ..architectures import architectures
 from ..tools import device, set_device_cpu, get_device, print_table
 from ..losses import confidence
+
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+import warnings
+warnings.filterwarnings("ignore")
 
 # set_device_cpu()
 
@@ -22,13 +29,13 @@ from ..losses import confidence
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 class eval_results():
-    def __init__(self, folder_path, has_train = False):
+    def __init__(self, folder_path):
         
         try:
-            if has_train:
-                self.train_gt = numpy.load(os.path.join(folder_path, 'pred', 'train_gt.npy'))
-                self.train_feats = numpy.load(os.path.join(folder_path, 'pred', 'train_feats.npy'))
-                self.train_logits = numpy.load(os.path.join(folder_path, 'pred', 'train_logits.npy'))
+            # Prediction results
+            self.val_gt = numpy.load(os.path.join(folder_path, 'pred', 'val_gt.npy'))
+            self.val_logits = numpy.load(os.path.join(folder_path, 'pred', 'val_logits.npy'))
+            self.val_probs = numpy.load(os.path.join(folder_path, 'pred', 'val_probs.npy'))
 
             self.test_neg_gt = numpy.load(os.path.join(folder_path, 'pred', 'test_neg_gt.npy'))
             self.test_neg_logits = numpy.load(os.path.join(folder_path, 'pred', 'test_neg_logits.npy'))
@@ -38,19 +45,28 @@ class eval_results():
             self.test_unkn_logits = numpy.load(os.path.join(folder_path, 'pred', 'test_unkn_logits.npy'))
             self.test_unkn_probs = numpy.load(os.path.join(folder_path, 'pred', 'test_unkn_probs.npy'))
 
-            self.ccr = numpy.load(os.path.join(folder_path, 'openset', 'ccr.npy'))
-            self.threshold = numpy.load(os.path.join(folder_path, 'openset', 'threshold.npy'))
-            self.fpr_neg = numpy.load(os.path.join(folder_path, 'openset', 'fpr_neg.npy'))
-            self.fpr_unkn = numpy.load(os.path.join(folder_path, 'openset', 'fpr_unkn.npy'))
-            self.urr_neg = numpy.load(os.path.join(folder_path, 'openset', 'urr_neg.npy'))
-            self.urr_unkn = numpy.load(os.path.join(folder_path, 'openset', 'urr_unkn.npy'))
-            self.osa_neg = numpy.load(os.path.join(folder_path, 'openset', 'osa_neg.npy'))
-            self.osa_unkn = numpy.load(os.path.join(folder_path, 'openset', 'osa_unkn.npy'))
+            # Performance results
+            self.val_ccr = numpy.load(os.path.join(folder_path, 'openset', 'val_ccr.npy'))
+            self.val_thrs = numpy.load(os.path.join(folder_path, 'openset', 'val_thrs.npy'))
+            self.val_fpr = numpy.load(os.path.join(folder_path, 'openset', 'val_fpr.npy'))
+            self.val_urr = numpy.load(os.path.join(folder_path, 'openset', 'val_urr.npy'))
+            self.val_osa = numpy.load(os.path.join(folder_path, 'openset', 'val_osa.npy'))
+
+            self.test_neg_ccr = numpy.load(os.path.join(folder_path, 'openset', 'test_neg_ccr.npy'))
+            self.test_neg_thrs = numpy.load(os.path.join(folder_path, 'openset', 'test_neg_thrs.npy'))
+            self.test_neg_fpr = numpy.load(os.path.join(folder_path, 'openset', 'test_neg_fpr.npy'))
+            self.test_neg_urr = numpy.load(os.path.join(folder_path, 'openset', 'test_neg_urr.npy'))
+            self.test_neg_osa = numpy.load(os.path.join(folder_path, 'openset', 'test_neg_osa.npy'))
+
+            self.test_unkn_ccr = numpy.load(os.path.join(folder_path, 'openset', 'test_unkn_ccr.npy'))
+            self.test_unkn_thrs = numpy.load(os.path.join(folder_path, 'openset', 'test_unkn_thrs.npy'))
+            self.test_unkn_fpr = numpy.load(os.path.join(folder_path, 'openset', 'test_unkn_fpr.npy'))
+            self.test_unkn_urr = numpy.load(os.path.join(folder_path, 'openset', 'test_unkn_urr.npy'))
+            self.test_unkn_osa = numpy.load(os.path.join(folder_path, 'openset', 'test_unkn_osa.npy'))
 
         except Exception as error:
 
-            if has_train:
-                self.train_gt, self.train_feats, self.train_logits = None, None, None
+            self.val_gt, self.val_logits, self.val_probs = None, None, None
 
             self.test_neg_gt, self.test_neg_logits, self.test_neg_probs = None, None, None
             self.test_unkn_gt, self.test_unkn_logits, self.test_unkn_probs = None, None, None
@@ -62,30 +78,52 @@ class eval_results():
 
             print(f"Error: Load evaluation results! {error}")
 
-def plot_OSAC(data_info, lim=None, is_verbose=False):
+def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
 
-    for d_i in data_info:
+    plt.figure(figsize=figsize)
+
+    for idx, d_i in enumerate(data_info):
 
         info = d_i['info']
         
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
 
-        urr_unkn = eval_res.urr_unkn
-        osa_neg = eval_res.osa_neg
-        osa_unkn = eval_res.osa_unkn
+        # Get validation set results and the operational threshold
+        urr = eval_res.val_urr
+        osa = eval_res.val_osa
+        thrs = eval_res.val_thrs
+        op_thrs = thrs[numpy.argmax(osa)]
+        if show_val:
+            plt.plot(urr, osa, color=colors[idx], alpha=0.2, linewidth=5)
 
-        max_osa_neg_idx = numpy.argmax(osa_neg)
-        max_osa_unkn_idx = numpy.argmax(osa_unkn)
+        # Get OOSA for the test set with negative samples
+        urr = eval_res.test_neg_urr
+        osa = eval_res.test_neg_osa
+        thrs = eval_res.test_neg_thrs
 
-        oprt_osa, oper_urr = osa_unkn[max_osa_neg_idx], urr_unkn[max_osa_neg_idx]
-        orcl_osa, orcl_urr = osa_unkn[max_osa_unkn_idx], urr_unkn[max_osa_unkn_idx]
+        op_idx = numpy.argmax(thrs > op_thrs) - 1
+        op_osa, op_urr = osa[op_idx], urr[op_idx]
+        id_idx = numpy.argmax(osa)
+        id_osa, id_urr = osa[id_idx], urr[id_idx]
 
-        plt.plot(urr_unkn, osa_unkn, label=d_i['label'])
-        plt.scatter(oper_urr,oprt_osa,marker='*',facecolors='black',edgecolors='black',s=50, zorder=20)
-        plt.scatter(orcl_urr,orcl_osa,marker='d',facecolors='none',edgecolors='black', zorder=20)
-        if is_verbose:
-            print(f"{d_i['label']} OSA (Operational / Oracle) = {oprt_osa:.4f} / {orcl_osa:.4f} ({oper_urr:.4f} / {orcl_urr:.4f})")
+        plt.plot(urr, osa, color=colors[idx], linestyle='-.')
+        plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
+        plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
+
+        # Get OOSA for the test set with unknown samples
+        urr = eval_res.test_unkn_urr
+        osa = eval_res.test_unkn_osa
+        thrs = eval_res.test_unkn_thrs
+
+        op_idx = numpy.argmax(thrs > op_thrs) - 1
+        op_osa, op_urr = osa[op_idx], urr[op_idx]
+        id_idx = numpy.argmax(osa)
+        id_osa, id_urr = osa[id_idx], urr[id_idx]
+
+        plt.plot(urr, osa, color=colors[idx], linestyle='-', label=d_i['label'])
+        plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
+        plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
 
     if lim != None:
         plt.xlim(lim[0])
@@ -98,11 +136,153 @@ def plot_OSAC(data_info, lim=None, is_verbose=False):
     plt.legend()
     plt.show()
 
+def plot_OSCR(data_info, colors, figsize=(5,3), lim=None):
+    plt.figure(figsize=figsize)
+
+    for idx, d_i in enumerate(data_info):
+
+        info = d_i['info']
+        
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        eval_res = eval_results(root_path)
+
+        plt.semilogx(eval_res.test_neg_fpr, eval_res.test_neg_ccr, linestyle='-.', color=colors[idx])
+        plt.semilogx(eval_res.test_unkn_fpr, eval_res.test_unkn_ccr, linestyle='-', color=colors[idx])
+
+    if lim != None:
+        plt.xlim(lim[0])
+        plt.ylim(lim[1])
+    else:
+        plt.xlim((-0.02,1.02))
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('Correct Classification Rate')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+def plot_confusion_mat(data_info, colors='viridis', figsize=(5,5), set_diag_mask=False, set_cmap_range=None, show_numbers=True, diag_sort=False):
+
+    for d_i in data_info:
+
+        info = d_i['info']
+        
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        eval_res = eval_results(root_path)
+        
+        knowns = eval_res.test_unkn_gt != -1
+        known_gt = eval_res.test_unkn_gt[knowns]
+        known_probs = eval_res.test_unkn_probs[knowns]
+        known_pred = numpy.argmax(known_probs, axis=1)
+
+        cm = confusion_matrix(known_gt, known_pred)
+        if diag_sort:
+            diag = numpy.diag(cm)
+            idx=numpy.argsort(diag)[::-1]
+            cm = cm[idx,:][:,idx]
+        plt.figure(figsize=figsize)
+        if set_diag_mask: 
+            mask = numpy.eye(cm.shape[0],dtype=int)
+            cm = numpy.ma.masked_array(cm, mask=mask)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+        disp.plot(cmap=colors, include_values=show_numbers, values_format='.0f')
+        if not show_numbers:
+            disp.ax_.set_xticklabels([])
+            disp.ax_.set_yticklabels([])
+        else:
+            disp.ax_.set_xticklabels(idx)
+            disp.ax_.set_yticklabels(idx)
+        if set_cmap_range != None:
+            disp.im_.set_clim(vmin=set_cmap_range[0], vmax=set_cmap_range[1])
+
+def plot_fpr_fnr_class(data_info, color=('red','green'), ylim=(0.0,0.5)):
+
+    fpr_fnr_results = compute_fpr_fnr(data_info)
+
+    for _, fpr_fnr in enumerate(fpr_fnr_results):
+        fig, axs = plt.subplots(2,1,figsize=(len(fpr_fnr)*0.3,2))
+        for idx, c_fpr_fnr in enumerate(fpr_fnr):
+            axs[0].bar(idx, c_fpr_fnr['fpr'], color=color[0], width=0.7)
+            axs[1].bar(idx, c_fpr_fnr['fnr'], color=color[1], width=0.7)
+
+        axs[0].set_ylabel('FPR')
+        axs[0].set_xticks([])
+        axs[0].set_ylim(ylim)
+
+        axs[1].set_ylabel('FNR')
+        axs[1].set_ylim(ylim)
+        axs[1].set_xticks(range(len(fpr_fnr)), [])
+        axs[1].set_xlabel('class')
+        axs[1].set_yticklabels([label.get_text() if i > 0 else '' for i, label in enumerate(axs[0].get_yticklabels())])
+        axs[1].invert_yaxis()
+        plt.subplots_adjust(hspace=0)
+
+def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, figsize=(5,3), xlim=(-0.02, 0.52)):
+
+    if color == None:
+        color = ['black'] * len(data_info)
+    if marker == None:
+        marker = ['o'] * len(data_info)
+
+    fpr_fnr_results = compute_fpr_fnr(data_info)
+
+    print(f"average\tstd\tmodel")
+    plt.figure(figsize=figsize)
+    results = []
+    for i, fpr_fnr in enumerate(fpr_fnr_results):
+        diff = []
+        for _, c_fpr_fnr in enumerate(fpr_fnr):
+            diff.append(abs(c_fpr_fnr['fpr']-c_fpr_fnr['fnr']))
+        avg, std = numpy.average(diff), numpy.std(diff)
+        plt.errorbar(y=i, x=avg, xerr=std, color=color[i], capsize=3, fmt=marker[i])
+        if i == 0:
+            plt.fill_between([avg - std, avg + std], -1, len(data_info)+1, alpha=0.05, color=color[i])
+            plt.vlines(avg,ymin=-1,ymax=len(data_info)+1,color=color[i],linestyles='dashed',alpha=0.2)
+        results.append(avg)
+        print(f"{avg:.4f}\t{std:.3f}\t{data_info[i]['label']}")
+
+    if xlim != None:
+        plt.hlines(hlines, [xlim[0]]*len(hlines), [xlim[1]]*len(hlines), color='black', alpha=0.5)
+        plt.xlim(xlim)
+    plt.yticks(range(len(data_info)), [d_i['label'] for d_i in data_info])
+    plt.ylim((-0.25,len(data_info)-0.75))
+    plt.xlabel('|FPR - FNR|')
+    plt.gca().invert_xaxis()
+    plt.tight_layout()
+
+    return results
+
+def compute_fpr_fnr(data_info):
+
+    results = []
+    for d_i in data_info:
+
+        info = d_i['info']
+        
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        eval_res = eval_results(root_path)
+        
+        y_true = eval_res.test_unkn_gt
+        y_probs = eval_res.test_unkn_probs
+        y_pred = numpy.argmax(y_probs, axis=1)
+
+        res = []
+        classes = [uq for uq in numpy.unique(y_true) if uq >=0]
+        for c in classes:
+            # one-vs-rest problem
+            y_true_c = y_true == c
+            y_pred_c = numpy.logical_and(y_pred == c, y_probs[range(len(y_pred)),y_pred] >= 0.5)
+            tn, fp, fn, tp = metrics.confusion_matrix(y_true_c, y_pred_c).ravel()
+            res.append({'fpr': fp/(fp + tn),'fnr':  fn/(fn + tp)})
+
+        results.append(res)
+    
+    return results
+
 def print_metrics(data_info):
     
     res = dict()
-
-    print("acc\tprec\tf1score\tauroc-c\tauprc-o\tauroc-o\topenauc\toosa")
+    print("\t\t\toosa\t\t\tiosa")
+    print("acc\tauroc\topenauc\t_val\t_neg\t_unkn *\t_neg\t_unkn")
     for idx, d_i in enumerate(data_info):
 
         info = d_i['info']
@@ -118,33 +298,27 @@ def print_metrics(data_info):
         known_probs = eval_res.test_unkn_probs[knowns]
         known_pred = numpy.argmax(known_probs, axis=1)
         acc = compute_acc(known_gt, known_pred)
-        precision = compute_precision(known_gt, known_pred,'macro')
-        f1 = compute_f1score(known_gt, known_pred,'macro')
+        # precision = compute_precision(known_gt, known_pred,'macro')
+        # f1 = compute_f1score(known_gt, known_pred,'macro')
         auroc_c = compute_auroc(known_gt, known_probs, 'macro', by_class=True)
 
         # Open-set evaluation metrics
-        auprc_o = compute_auprc(eval_res.test_unkn_gt, eval_res.test_unkn_probs, 'macro')
-        auroc_o = compute_auroc(knowns, eval_res.test_unkn_probs, 'macro')
+        # auprc_o = compute_auprc(eval_res.test_unkn_gt, eval_res.test_unkn_probs, 'macro')
+        # auroc_o = compute_auroc(knowns, eval_res.test_unkn_probs, 'macro')
         openauc = compute_openauc(max_score[knowns], max_score[~knowns], known_pred, known_gt)
-        oosa = compute_oosa(eval_res.osa_neg, eval_res.osa_unkn)
-        print(f"{acc:.4f}\t{precision:.4f}\t{f1:.4f}\t{auroc_c:.4f}\t{auprc_o:.4}\t{auroc_o:.4f}\t{openauc:.4f}\t{oosa:.4f}")
+        oosa = compute_oosa(eval_res.val_thrs, eval_res.val_osa, 
+                            eval_res.test_neg_thrs, eval_res.test_neg_osa, 
+                            eval_res.test_unkn_thrs, eval_res.test_unkn_osa)
+        print(f"{acc:.4f}\t{auroc_c:.4f}\t{openauc:.4f}\t{oosa['oosa_val']:.4f}\t{oosa['oosa_neg']:.4f}\t{oosa['oosa_unkn']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}")
 
         if idx == 0:
             res['acc'] = [acc]
-            res['precision'] = [precision]
-            res['f1'] = [f1]
             res['auroc_c'] = [auroc_c]
-            res['auprc_o'] = [auprc_o]
-            res['auroc_o'] = [auroc_o]
             res['openauc'] = [openauc]
             res['oosa'] = [oosa]
         else:
             res['acc'].append(acc)
-            res['precision'].append(precision)
-            res['f1'].append(f1)
             res['auroc_c'].append(auroc_c)
-            res['auprc_o'].append(auprc_o)
-            res['auroc_o'].append(auroc_o)
             res['openauc'].append(openauc)
             res['oosa'].append(oosa)
 
@@ -212,9 +386,19 @@ def compute_openauc(max_prob_known, max_prob_unknown, pred, labels):
 
     return openauc
 
-def compute_oosa(osa_neg, osa_unkn):
-    oosa = osa_unkn[numpy.argmax(osa_neg)]
-    return oosa
+def compute_oosa(thrs_val, osa_val, thrs_neg, osa_neg, thrs_unkn, osa_unkn):
+    op_thrs = thrs_val[numpy.argmax(osa_val)]
+    oosa_val = numpy.max(osa_val)
+
+    op_idx = numpy.argmax(thrs_neg > op_thrs) - 1
+    oosa_neg = osa_neg[op_idx]
+    iosa_neg = numpy.max(osa_neg)
+
+    op_idx = numpy.argmax(thrs_unkn > op_thrs) - 1
+    oosa_unkn = osa_unkn[op_idx]
+    iosa_unkn = numpy.max(osa_unkn)
+
+    return {'oosa_val': oosa_val, 'oosa_neg': oosa_neg, 'oosa_unkn': oosa_unkn, 'iosa_neg': iosa_neg, 'iosa_unkn':iosa_unkn}
 
 def compute_auprc(gt, probs, average):
 
@@ -274,6 +458,22 @@ def plot_binary_OSAC(data_info, CMAP, lim=None):
     plt.ylabel('Open-Set Accuracy')
     plt.grid(True)
     plt.legend()
+
+def get_training_log(data_info, log_item = 'Loss/train'):
+
+    info = data_info['info']
+
+    log_path = f"./_models/{info[0]}/_s42/{info[1]}/{info[2]}/{info[3]}/Logs"
+    onlyfiles = [f for f in os.listdir(log_path) if os.path.isfile(os.path.join(log_path, f))]
+    log_file = onlyfiles[-1] # The last log
+
+    event_acc = EventAccumulator(os.path.join(log_path, log_file))
+    event_acc.Reload()
+
+    logs = [e.value for e in event_acc.Scalars(log_item)]
+
+    return logs
+
 
 
 def CCR_at_FPR(CCR, FPR, fpr_values=[1e-3,1e-2,1e-1,1]):
@@ -605,7 +805,7 @@ def find_ccr_at_fpr(FPR:numpy.array, CCR:numpy.array, ref_fpr:float):
     ccr = f(ref_fpr).item()
     return ccr
 
-def get_openset_perf(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1, at_fpr=None, is_verbose=False):
+def get_openset_perf(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=-1, is_verbose=False):
 
     # vary thresholds
     ccr, fpr = [], []
@@ -614,8 +814,8 @@ def get_openset_perf(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=
     gt = test_gt[test_gt != unkn_gt_label]
 
     # Get CCR and FPR
-    sorted_kn_probs = sorted(kn_probs[range(len(gt)),gt])
-    for tau in tqdm(sorted_kn_probs, miniters=int(len(gt)/5), maxinterval=600, disable=not is_verbose):
+    thresholds = sorted(numpy.append(kn_probs[range(len(gt)),gt], numpy.max(unkn_probs, axis=1)))
+    for tau in tqdm(thresholds, miniters=int(len(gt)/5), maxinterval=600, disable=not is_verbose):
         # correct classification rate
         ccr.append(numpy.sum(numpy.logical_and(
             numpy.argmax(kn_probs, axis=1) == gt,
@@ -629,10 +829,7 @@ def get_openset_perf(test_gt:numpy.array, test_probs:numpy.array, unkn_gt_label=
     urr = [1-v for v in fpr]
     osa = [alpha * c + (1-alpha) * u for c,u in zip(ccr,urr)]
 
-    if at_fpr is not None:
-        print(f"\tCCR@FPR{at_fpr} : {find_ccr_at_fpr(numpy.array(fpr),numpy.array(ccr),at_fpr)}")
-
-    return (ccr, fpr, urr, osa, sorted_kn_probs)
+    return (ccr, fpr, urr, osa, thresholds)
 
 def save_eval_pred(pred_results:dict, root:str, save_feats=True):
 
@@ -656,24 +853,17 @@ def save_eval_pred(pred_results:dict, root:str, save_feats=True):
     
     print(f"Prediction Saved Successfully!\n{root}\n")
 
-def save_openset_perf(ccr:list, threshold:list, 
-                      fpr_neg:list, fpr_unkn:list, 
-                      urr_neg:list, urr_unkn:list, 
-                      osa_neg:list, osa_unkn:list, 
-                      root:str):
+def save_openset_perf(category:str, ccr:list, threshold:list, fpr:list, urr:list, osa:list, root:str):
 
     if not os.path.exists(root):
         os.makedirs(root)
         print(f"Folder '{root}' created successfully.")
 
-    numpy.save(os.path.join(root, 'ccr.npy'), ccr)
-    numpy.save(os.path.join(root, 'threshold.npy'), threshold)
-    numpy.save(os.path.join(root, 'fpr_neg.npy'), fpr_neg)
-    numpy.save(os.path.join(root, 'fpr_unkn.npy'), fpr_unkn)
-    numpy.save(os.path.join(root, 'urr_neg.npy'), urr_neg)
-    numpy.save(os.path.join(root, 'urr_unkn.npy'), urr_unkn)
-    numpy.save(os.path.join(root, 'osa_neg.npy'), osa_neg)
-    numpy.save(os.path.join(root, 'osa_unkn.npy'), osa_unkn)
+    numpy.save(os.path.join(root, f'{category}_ccr.npy'), ccr)
+    numpy.save(os.path.join(root, f'{category}_thrs.npy'), threshold)
+    numpy.save(os.path.join(root, f'{category}_fpr.npy'), fpr)
+    numpy.save(os.path.join(root, f'{category}_urr.npy'), urr)
+    numpy.save(os.path.join(root, f'{category}_osa.npy'), osa)
 
     print(f"Open-set performance Data Saved Successfully!\n{root}\n")
 
