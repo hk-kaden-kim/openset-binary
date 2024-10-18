@@ -29,13 +29,15 @@ warnings.filterwarnings("ignore")
 # Availability: https://gitlab.uzh.ch/manuel.guenther/eos-example
 ########################################################################
 class eval_results():
-    def __init__(self, folder_path):
+    def __init__(self, folder_path, load_feats=False):
         
         try:
             # Prediction results
             self.val_gt = numpy.load(os.path.join(folder_path, 'pred', 'val_gt.npy'))
             self.val_logits = numpy.load(os.path.join(folder_path, 'pred', 'val_logits.npy'))
             self.val_probs = numpy.load(os.path.join(folder_path, 'pred', 'val_probs.npy'))
+            if load_feats:
+                self.val_feats = numpy.load(os.path.join(folder_path, 'pred', 'val_feats.npy'))
 
             self.test_neg_gt = numpy.load(os.path.join(folder_path, 'pred', 'test_neg_gt.npy'))
             self.test_neg_logits = numpy.load(os.path.join(folder_path, 'pred', 'test_neg_logits.npy'))
@@ -44,7 +46,7 @@ class eval_results():
             self.test_unkn_gt = numpy.load(os.path.join(folder_path, 'pred', 'test_unkn_gt.npy'))
             self.test_unkn_logits = numpy.load(os.path.join(folder_path, 'pred', 'test_unkn_logits.npy'))
             self.test_unkn_probs = numpy.load(os.path.join(folder_path, 'pred', 'test_unkn_probs.npy'))
-
+            
             # Performance results
             self.val_ccr = numpy.load(os.path.join(folder_path, 'openset', 'val_ccr.npy'))
             self.val_thrs = numpy.load(os.path.join(folder_path, 'openset', 'val_thrs.npy'))
@@ -67,6 +69,8 @@ class eval_results():
         except Exception as error:
 
             self.val_gt, self.val_logits, self.val_probs = None, None, None
+            if load_feats:
+                self.val_feats = None
 
             self.test_neg_gt, self.test_neg_logits, self.test_neg_probs = None, None, None
             self.test_unkn_gt, self.test_unkn_logits, self.test_unkn_probs = None, None, None
@@ -76,7 +80,7 @@ class eval_results():
             self.urr_neg, self.urr_unkn = None, None
             self.osa_neg, self.osa_unkn = None, None
 
-            print(f"Error: Load evaluation results! {error}")
+            # print(f"Error: Load evaluation results! {error}")
 
 def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
 
@@ -88,42 +92,44 @@ def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
         
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
+        if eval_res.val_gt is None:
+            continue
+        else:
+            # Get validation set results and the operational threshold
+            urr = eval_res.val_urr
+            osa = eval_res.val_osa
+            thrs = eval_res.val_thrs
+            op_thrs = thrs[numpy.argmax(osa)]
+            if show_val:
+                plt.plot(urr, osa, color=colors[idx], alpha=0.2, linewidth=5)
 
-        # Get validation set results and the operational threshold
-        urr = eval_res.val_urr
-        osa = eval_res.val_osa
-        thrs = eval_res.val_thrs
-        op_thrs = thrs[numpy.argmax(osa)]
-        if show_val:
-            plt.plot(urr, osa, color=colors[idx], alpha=0.2, linewidth=5)
+            # Get OOSA for the test set with negative samples
+            urr = eval_res.test_neg_urr
+            osa = eval_res.test_neg_osa
+            thrs = eval_res.test_neg_thrs
 
-        # Get OOSA for the test set with negative samples
-        urr = eval_res.test_neg_urr
-        osa = eval_res.test_neg_osa
-        thrs = eval_res.test_neg_thrs
+            op_idx = numpy.argmax(thrs > op_thrs) - 1
+            op_osa, op_urr = osa[op_idx], urr[op_idx]
+            id_idx = numpy.argmax(osa)
+            id_osa, id_urr = osa[id_idx], urr[id_idx]
 
-        op_idx = numpy.argmax(thrs > op_thrs) - 1
-        op_osa, op_urr = osa[op_idx], urr[op_idx]
-        id_idx = numpy.argmax(osa)
-        id_osa, id_urr = osa[id_idx], urr[id_idx]
+            plt.plot(urr, osa, color=colors[idx], linestyle='-.')
+            plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
+            plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
 
-        plt.plot(urr, osa, color=colors[idx], linestyle='-.')
-        plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
-        plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
+            # Get OOSA for the test set with unknown samples
+            urr = eval_res.test_unkn_urr
+            osa = eval_res.test_unkn_osa
+            thrs = eval_res.test_unkn_thrs
 
-        # Get OOSA for the test set with unknown samples
-        urr = eval_res.test_unkn_urr
-        osa = eval_res.test_unkn_osa
-        thrs = eval_res.test_unkn_thrs
+            op_idx = numpy.argmax(thrs > op_thrs) - 1
+            op_osa, op_urr = osa[op_idx], urr[op_idx]
+            id_idx = numpy.argmax(osa)
+            id_osa, id_urr = osa[id_idx], urr[id_idx]
 
-        op_idx = numpy.argmax(thrs > op_thrs) - 1
-        op_osa, op_urr = osa[op_idx], urr[op_idx]
-        id_idx = numpy.argmax(osa)
-        id_osa, id_urr = osa[id_idx], urr[id_idx]
-
-        plt.plot(urr, osa, color=colors[idx], linestyle='-', label=d_i['label'])
-        plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
-        plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
+            plt.plot(urr, osa, color=colors[idx], linestyle='-', label=d_i['label'])
+            plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
+            plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
 
     if lim != None:
         plt.xlim(lim[0])
@@ -216,7 +222,7 @@ def plot_fpr_fnr_class(data_info, color=('red','green'), ylim=(0.0,0.5)):
         axs[1].invert_yaxis()
         plt.subplots_adjust(hspace=0)
 
-def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, figsize=(5,3), xlim=(-0.02, 0.52)):
+def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, figsize=(5,3), xlim=(-0.02, 0.52), has_oosa=None, is_verbose=True):
 
     if color == None:
         color = ['black'] * len(data_info)
@@ -238,15 +244,25 @@ def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, fig
             plt.fill_between([avg - std, avg + std], -1, len(data_info)+1, alpha=0.05, color=color[i])
             plt.vlines(avg,ymin=-1,ymax=len(data_info)+1,color=color[i],linestyles='dashed',alpha=0.2)
         results.append(avg)
-        print(f"{avg:.4f}\t{std:.3f}\t{data_info[i]['label']}")
+        if is_verbose:
+            print(f"{avg:.4f}\t{std:.3f}\t{data_info[i]['label']}")
 
     if xlim != None:
         plt.hlines(hlines, [xlim[0]]*len(hlines), [xlim[1]]*len(hlines), color='black', alpha=0.5)
         plt.xlim(xlim)
+
     plt.yticks(range(len(data_info)), [d_i['label'] for d_i in data_info])
     plt.ylim((-0.25,len(data_info)-0.75))
     plt.xlabel('|FPR - FNR|')
-    plt.gca().invert_xaxis()
+    # plt.gca().invert_xaxis()
+    plt.gca().invert_yaxis()
+
+    if has_oosa:
+        ax2 = plt.gca().twiny()
+        ax2.plot(has_oosa['oosa'], range(len(data_info)), c=has_oosa['color'], marker='*', markersize=7)
+        ax2.set_xlim(has_oosa['lim'])
+        ax2.set_xlabel('OOSA')
+
     plt.tight_layout()
 
     return results
@@ -261,24 +277,27 @@ def compute_fpr_fnr(data_info):
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
         
-        y_true = eval_res.test_unkn_gt
-        y_probs = eval_res.test_unkn_probs
-        y_pred = numpy.argmax(y_probs, axis=1)
+        if eval_res.val_gt is None:
+            res = [{'fpr': 0,'fnr':  0}]
+        else:
+            y_true = eval_res.test_unkn_gt
+            y_probs = eval_res.test_unkn_probs
+            y_pred = numpy.argmax(y_probs, axis=1)
 
-        res = []
-        classes = [uq for uq in numpy.unique(y_true) if uq >=0]
-        for c in classes:
-            # one-vs-rest problem
-            y_true_c = y_true == c
-            y_pred_c = numpy.logical_and(y_pred == c, y_probs[range(len(y_pred)),y_pred] >= 0.5)
-            tn, fp, fn, tp = metrics.confusion_matrix(y_true_c, y_pred_c).ravel()
-            res.append({'fpr': fp/(fp + tn),'fnr':  fn/(fn + tp)})
+            res = []
+            classes = [uq for uq in numpy.unique(y_true) if uq >=0]
+            for c in classes:
+                # one-vs-rest problem
+                y_true_c = y_true == c
+                y_pred_c = numpy.logical_and(y_pred == c, y_probs[range(len(y_pred)),y_pred] >= 0.5)
+                tn, fp, fn, tp = metrics.confusion_matrix(y_true_c, y_pred_c).ravel()
+                res.append({'fpr': fp/(fp + tn),'fnr':  fn/(fn + tp)})
 
         results.append(res)
     
     return results
 
-def print_metrics(data_info):
+def print_metrics(data_info, is_verbose=True):
     
     res = dict()
     print("\t\t\toosa\t\t\tiosa")
@@ -289,27 +308,33 @@ def print_metrics(data_info):
         
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
+    
+        if eval_res.val_gt is None:
+            acc, auroc_c, openauc = 0, 0, 0
+            oosa = {'oosa_val': 0, 'oosa_neg': 0, 'oosa_unkn': 0, 'iosa_neg': 0, 'iosa_unkn':0}
 
-        max_score = numpy.max(eval_res.test_unkn_probs, axis=1)
-        knowns = eval_res.test_unkn_gt != -1
+        else: 
+            max_score = numpy.max(eval_res.test_unkn_probs, axis=1)
+            knowns = eval_res.test_unkn_gt != -1
 
-        # Closed-set evaluation metrics
-        known_gt = eval_res.test_unkn_gt[knowns]
-        known_probs = eval_res.test_unkn_probs[knowns]
-        known_pred = numpy.argmax(known_probs, axis=1)
-        acc = compute_acc(known_gt, known_pred)
-        # precision = compute_precision(known_gt, known_pred,'macro')
-        # f1 = compute_f1score(known_gt, known_pred,'macro')
-        auroc_c = compute_auroc(known_gt, known_probs, 'macro', by_class=True)
+            # Closed-set evaluation metrics
+            known_gt = eval_res.test_unkn_gt[knowns]
+            known_probs = eval_res.test_unkn_probs[knowns]
+            known_pred = numpy.argmax(known_probs, axis=1)
+            acc = compute_acc(known_gt, known_pred)
+            # precision = compute_precision(known_gt, known_pred,'macro')
+            # f1 = compute_f1score(known_gt, known_pred,'macro')
+            auroc_c = compute_auroc(known_gt, known_probs, 'macro', by_class=True)
 
-        # Open-set evaluation metrics
-        # auprc_o = compute_auprc(eval_res.test_unkn_gt, eval_res.test_unkn_probs, 'macro')
-        # auroc_o = compute_auroc(knowns, eval_res.test_unkn_probs, 'macro')
-        openauc = compute_openauc(max_score[knowns], max_score[~knowns], known_pred, known_gt)
-        oosa = compute_oosa(eval_res.val_thrs, eval_res.val_osa, 
-                            eval_res.test_neg_thrs, eval_res.test_neg_osa, 
-                            eval_res.test_unkn_thrs, eval_res.test_unkn_osa)
-        print(f"{acc:.4f}\t{auroc_c:.4f}\t{openauc:.4f}\t{oosa['oosa_val']:.4f}\t{oosa['oosa_neg']:.4f}\t{oosa['oosa_unkn']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}")
+            # Open-set evaluation metrics
+            # auprc_o = compute_auprc(eval_res.test_unkn_gt, eval_res.test_unkn_probs, 'macro')
+            # auroc_o = compute_auroc(knowns, eval_res.test_unkn_probs, 'macro')
+            openauc = compute_openauc(max_score[knowns], max_score[~knowns], known_pred, known_gt)
+            oosa = compute_oosa(eval_res.val_thrs, eval_res.val_osa, 
+                                eval_res.test_neg_thrs, eval_res.test_neg_osa, 
+                                eval_res.test_unkn_thrs, eval_res.test_unkn_osa)
+        if is_verbose:
+            print(f"{acc:.4f}\t{auroc_c:.4f}\t{openauc:.4f}\t{oosa['oosa_val']:.4f}\t{oosa['oosa_neg']:.4f}\t{oosa['oosa_unkn']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}")
 
         if idx == 0:
             res['acc'] = [acc]
@@ -783,10 +808,13 @@ def extract(dataset, net, batch_size=2048, is_verbose=False):
     gt, logits, feats = [], [], []
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
+    net.eval()
     with torch.no_grad():
         for (x, y) in tqdm(data_loader, miniters=int(len(data_loader)/3), maxinterval=600, disable=not is_verbose):
-            gt.extend(y.tolist())
+            
             logs, feat = net(device(x))
+
+            gt.extend(y.tolist())
             logits.extend(logs.tolist())
             feats.extend(feat.tolist())
 
@@ -847,7 +875,7 @@ def save_eval_pred(pred_results:dict, root:str, save_feats=True):
     for key, value in pred_results.items():
         if value:
             for i, arr in enumerate(value):
-                if not save_feats and i == 2:
+                if i == 2 and not save_feats:
                     continue
                 numpy.save(os.path.join(root, f'{key}_{pred_name[i]}.npy'), arr)
     

@@ -39,16 +39,16 @@ loss:
     unkn_weight: 1
   osovr:
     sigma:        # LeNet_plus_plus : 6     LeNet : 8       ResNet_50 : 8
-      LeNet_plus_plus: 8    # 6 (04.10.2024)
-      LeNet: 8            # 6 (04.10.2024)
+      LeNet_plus_plus: 8   
+      LeNet: 8           
       ResNet_50: 8
     mode:
-      # C: 'batch'   # Small : 'global'     Large : 'global'
-      F: 1       # Small : 0.6    Large : 1            
-      # M: 0.6      # Small : 0     Large : 0.6
+      # C: 'batch'   # Small : 'global'     Large : 'batch'
+      # F: 1       # Small : 0.6    Large : 2            
+      # M: 0.6      # Small : 0     Large : 0.4
   ovr:
     mode:
-      C: 'global'   # Small : 'batch'     Large : 'global'
+      # C: 'global'   # Small : 'batch'     Large : 'batch'
       # F: 0.6        # Small : 0.6    Large : 2            
       # M: 0.6      # Small : 0.2     Large : 0.6
 
@@ -57,6 +57,6 @@ loss:
 ##########################################
 opt:    # Adam optimizer
   lr: 1.e-3  # 1.e-3 / 1.e-4 (P3 OSOvR). Initial learning rate
-  lr2: 1.e-4  # P3 OSOvR, P2 M 0.4 OvR
+  # lr2: 1.e-4  # P3 OSOvR, P2 M 0.4 OvR
   decay: 0    # 0. Number of epochs to wait for each learning rate reduction. 0 means no decay
   gamma: 1    # 1. Factor to reduce the learning rate

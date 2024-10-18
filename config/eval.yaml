@@ -25,7 +25,7 @@ data:
 ##########################################
 arch:
   model_root: ../../_models
-  feat_dim: -1   # -1 for using default value.
+  feat_dim: -1  # -1 for using default value.
 
 osovr_sigma: 
   LeNet_plus_plus: 8      # 6 04.10.2024

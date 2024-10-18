@@ -254,10 +254,6 @@ class IMAGENET():
         else:
             assert False, f"Not avilable to set the size of Negatives in Large-scale training dataset"
 
-        if has_background_class:
-            train_ds.replace_negative_label()
-            val_ds.replace_negative_label()
-
         return (train_ds, val_ds, train_ds.label_count)
 
     def get_test_set(self, has_background_class=False, is_verbose=False):
@@ -282,23 +278,15 @@ class IMAGENET():
                 transform=self.val_data_transform
             )   
         
-        if has_background_class:
-            test_dataset.replace_negative_label()
-            test_dataset.replace_unknown_label()
-            
-            test_neg_dataset.replace_negative_label() # Replace negative(-1) to 'Last known label + 1'
-            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] >= 0]   # filter out: unknown (-2)
 
-            test_unkn_dataset.replace_unknown_label() # Replace unknown(-2) to 'Last known label + 1'
-            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] >= 0]    # filter out: negative (-1)
+        test_dataset.dataset[1] = test_dataset.dataset[1].replace(-2, -1) # Replace unknown(-2) to -1
 
-        else:
-            test_dataset.dataset[1] = test_dataset.dataset[1].replace(-2, -1) # Replace unknown(-2) to -1
-
-            test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] > -2] # filter out: unknown (-2)
-
-            test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] != -1]   # filter out: negative (-1)
-            test_unkn_dataset.dataset[1] = test_unkn_dataset.dataset[1].replace(-2, -1)
+        test_neg_dataset.dataset = test_neg_dataset.dataset[test_neg_dataset.dataset[1] > -2] # filter out: unknown (-2)
+        test_neg_dataset.dataset.reset_index(inplace=True, drop=True)
+        
+        test_unkn_dataset.dataset = test_unkn_dataset.dataset[test_unkn_dataset.dataset[1] != -1]   # filter out: negative (-1)
+        test_unkn_dataset.dataset[1] = test_unkn_dataset.dataset[1].replace(-2, -1)
+        test_unkn_dataset.dataset.reset_index(inplace=True, drop=True)
 
         return test_dataset, test_neg_dataset, test_unkn_dataset
 
