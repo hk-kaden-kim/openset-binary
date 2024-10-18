@@ -98,9 +98,10 @@ def evaluate(args, config, seed):
         if net is None:
             print(f"Weights are not loaded on the network!\n{which} Evaluation Terminated\n")
             continue
-        
+        tools.device(net)
+
+        # results [gt, logits, features]
         print("Execute predictions!")
-        # if args.scale == 'SmallScale':
         print(f"{time.strftime('%H:%M:%S')} Validation Set with 'Negative samples'...")
         pred_results['val'] = evals.extract(val_set_neg, net, batch_size, is_verbose=True)
         print(f"{time.strftime('%H:%M:%S')} Done!")
@@ -139,13 +140,6 @@ def evaluate(args, config, seed):
 
         if config.pred_save:
             evals.save_eval_pred(pred_results, results_dir.joinpath('pred'), save_feats = 'LeNet_plus_plus' in args.arch)
-
-        if 'LeNet_plus_plus' in args.arch:
-            tools.viz.deep_features_plot(which, net,
-                                         gpu=tools.get_device(), config=config,
-                                         unkn_gt_label=unkn_gt_label, 
-                                         pred_results=pred_results,
-                                         results_dir=results_dir,)
 
         print('Get Open-set evaluation results')
         print("1. Validation Set with 'Known Unknown Samples'...")
@@ -195,10 +189,29 @@ if __name__ == '__main__':
         evaluate(args, config, s)
         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("\n\nEvaluation Done!")
+    
 
+    #############################################
+    # experiments = [('ResNet_50_C_b',['OvR']),
+    #                ('ResNet_50_F_2',['OvR','OpenSetOvR']),
+    #                ('ResNet_50_M_4',['OpenSetOvR']),
+    #                ('ResNet_50_M_6',['OvR']),]
+    # experiments = [('LeNet_plus_plus_F2C2',[0,1],0,2),
+    #                ('LeNet_plus_plus_F2C2_neg_All',[0,1],-1,2),
+    #                ('LeNet_plus_plus_F2C5',[0,1,2,3,4],0,2),
+    #                ('LeNet_plus_plus_F2C5_neg_All',[0,1,2,3,4],-1,2),
+    #                ('LeNet_plus_plus_F2C10',[-1],0,2),
+    #                ('LeNet_plus_plus_F2C10_neg_All',[-1],-1,2),
+    #                ('LeNet_plus_plus_F3C3',[0,1,2],0,3),
+    #                ('LeNet_plus_plus_F3C3_neg_All',[0,1,2],-1,3),
+    #                ('LeNet_plus_plus_F3C4',[0,1,2,3],0,3),
+    #                ('LeNet_plus_plus_F3C4_neg_All',[0,1,2,3],-1,3)]
+    # experiments = ['LeNet_C_b','LeNet_C_g']
+    # print(experiments)
     # for s in args.seed:
-    #     for item in ['LargeScale_1','LargeScale_3']:
-    #         args.scale = item
+    #     for item in experiments:
+    #         args.arch = item
+    #         # args.approach = item[1]
     #         evaluate(args, config, s)
     #         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     #         print("\n\nEvaluation Done!")

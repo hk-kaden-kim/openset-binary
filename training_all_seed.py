@@ -65,8 +65,9 @@ def train(args, net, optimizer, train_data_loader, loss_func, num_classes, debug
 
 def validate(args, net, val_data_loader, loss_func, epoch, num_classes):
 
+    net.eval()
     with torch.no_grad():
-        net.eval()
+        
         val_loss = torch.zeros(2, dtype=float)
         val_accuracy = torch.zeros(2, dtype=int)
         val_confidence = torch.zeros(4, dtype=float)
@@ -217,7 +218,7 @@ def worker(args, config, seed):
         # 3. Model score calcuation
         save_status = "NO"
         curr_score = float(val_confidence[0] / val_confidence[1]) 
-        if config.data.train_neg_size != 0: # Consider only known confidence
+        if config.data.train_neg_size != 0: # Consider unknown confidence together
             curr_score += float(val_confidence[2] / val_confidence[3])
         
         # 4. Save/update the model
@@ -295,25 +296,35 @@ if __name__ == "__main__":
     # ---------------------------------------------------
     # Basic working process
     # ---------------------------------------------------
-    # for s in args.seed:
-    #     worker(args, config, s)
-    #     print("Training Done!\n\n\n")
+    for s in args.seed:
+        change_lr_1 = args.scale == 'LargeScale_3' and args.approach == 'OpenSetOvR'
+        try:
+            change_lr_2 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+            change_lr_3 = args.scale == 'LargeScale_2' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+            change_lr_4 = args.scale == 'LargeScale_2' and args.approach == 'OvR' and config.loss.osovr.mode.M == 0.4
+        except:
+            change_lr_2, change_lr_3, change_lr_4 = False, False, False
+        if change_lr_1 or change_lr_2 or change_lr_3 or change_lr_4:
+            config.opt.lr = 1.e-4
+            print(f"Learning rate changed : (new) {config.opt.lr}")
+        worker(args, config, s)
+        print("Training Done!\n\n\n")
 
     # ---------------------------------------------------
     # Special - Multiple working process
     # ---------------------------------------------------
-    ARCH = args.arch
-    for s in args.seed:
-        for item in [('ResNet_50_F_1','OpenSetOvR'),
-                     ('ResNet_50_C_g','OvR')]:
-            args.arch = item[0]
-            args.approach = item[1]
-            if item[1] == 'OpenSetOvR':
-                config.opt.lr = 0.0001
-            else:
-                config.opt.lr = 0.001
-            worker(args, config, s)
-            print("Training Done!\n\n\n")
+    # ARCH = args.arch
+    # for s in args.seed:
+    #     for item in [('ResNet_50_F_1','OpenSetOvR'),
+    #                  ('ResNet_50_C_g','OvR')]:
+    #         args.arch = item[0]
+    #         args.approach = item[1]
+    #         if item[1] == 'OpenSetOvR':
+    #             config.opt.lr = 0.0001
+    #         else:
+    #             config.opt.lr = 0.001
+    #         worker(args, config, s)
+    #         print("Training Done!\n\n\n")
 
 
     print("All training done!")
