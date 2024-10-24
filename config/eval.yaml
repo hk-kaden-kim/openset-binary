@@ -24,7 +24,7 @@ data:
 # Architecture Parameters
 ##########################################
 arch:
-  model_root: ../../_models
+  model_root: ../../_models/v2
   feat_dim: -1  # -1 for using default value.
 
 osovr_sigma: 

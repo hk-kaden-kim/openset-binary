@@ -23,7 +23,8 @@ labels={
   "SoftMax" : "Plain SoftMax",
   "EOS" : "Entropic Open-Set",
   "OvR" : "One-vs-Rest Classifiers",
-  "OpenSetOvR": "Open-Set OvR Classifiers"
+  "OpenSetOvR": "Open-Set OvR Classifiers",
+  "etc": None
 }
 
 def command_line_options():
@@ -45,6 +46,8 @@ def command_line_options():
     return parser.parse_args()
 
 def evaluate(args, config, seed):
+
+    tools.set_seeds(seed)
 
     # load dataset
     if args.scale == 'SmallScale':
@@ -206,12 +209,23 @@ if __name__ == '__main__':
     #                ('LeNet_plus_plus_F3C3_neg_All',[0,1,2],-1,3),
     #                ('LeNet_plus_plus_F3C4',[0,1,2,3],0,3),
     #                ('LeNet_plus_plus_F3C4_neg_All',[0,1,2,3],-1,3)]
-    # experiments = ['LeNet_C_b','LeNet_C_g']
+    # experiments = [('LeNet_C_neg_30k_b', ['OpenSetOvR'],  30000),
+    #                ('LeNet_C_neg_30k_b', ['OvR'],         30000),
+
+    #                ('LeNet_F_neg_30k_2', ['OpenSetOvR'],  30000),
+    #                ('LeNet_F_neg_30k_3', ['OvR'],         30000),
+                   
+    #                ('LeNet_M_neg_30k_04', ['OpenSetOvR'], 30000),
+    #                ('LeNet_M_neg_30k_02', ['OvR'],        30000),]
+    
     # print(experiments)
     # for s in args.seed:
     #     for item in experiments:
-    #         args.arch = item
-    #         # args.approach = item[1]
+    #         args.arch = item[0]
+    #         args.approach =item[1]
+    #         config.data.train_neg_size = item[2]
+    #         print('Change to : ', args.arch, args.approach, config.data.train_neg_size)
+    #         # assert False
     #         evaluate(args, config, s)
     #         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     #         print("\n\nEvaluation Done!")
