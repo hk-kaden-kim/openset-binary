@@ -5,6 +5,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm
 import warnings
 import matplotlib.pyplot as plt
+from matplotlib.legend_handler import HandlerLine2D, HandlerTuple
 
 import sklearn.metrics as metrics
 from sklearn.metrics import roc_curve, roc_auc_score, accuracy_score, balanced_accuracy_score, auc, f1_score, precision_score, average_precision_score, confusion_matrix, ConfusionMatrixDisplay
@@ -101,7 +102,7 @@ def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
             thrs = eval_res.val_thrs
             op_thrs = thrs[numpy.argmax(osa)]
             if show_val:
-                plt.plot(urr, osa, color=colors[idx], alpha=0.2, linewidth=5)
+                plt.plot(urr, osa, color=colors[idx], alpha=0.1, linewidth=5)
 
             # Get OOSA for the test set with negative samples
             urr = eval_res.test_neg_urr
@@ -113,9 +114,9 @@ def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
             id_idx = numpy.argmax(osa)
             id_osa, id_urr = osa[id_idx], urr[id_idx]
 
-            plt.plot(urr, osa, color=colors[idx], linestyle='-.')
-            plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
-            plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
+            plt.plot(urr, osa, color=colors[idx], linestyle='-.', alpha=0.2)
+            # plt.scatter(op_urr, op_osa, marker='*', facecolors=colors[idx], edgecolors='black', s=50, zorder=20)
+            # plt.scatter(id_urr, id_osa,marker='d',facecolors=colors[idx], edgecolors='black', zorder=20)
 
             # Get OOSA for the test set with unknown samples
             urr = eval_res.test_unkn_urr
@@ -142,31 +143,30 @@ def plot_OSAC(data_info, colors, figsize=(5,3), lim=None, show_val=True):
     plt.legend()
     plt.show()
 
-def plot_OSCR(data_info, colors, figsize=(5,3), lim=None):
+def plot_OSCR(data_info, colors, figsize=(5,3), lim=None, show_val=True):
     plt.figure(figsize=figsize)
-
     for idx, d_i in enumerate(data_info):
 
         info = d_i['info']
         
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
-
-        plt.semilogx(eval_res.test_neg_fpr, eval_res.test_neg_ccr, linestyle='-.', color=colors[idx])
-        plt.semilogx(eval_res.test_unkn_fpr, eval_res.test_unkn_ccr, linestyle='-', color=colors[idx])
+        if show_val:
+            plt.semilogx(eval_res.val_fpr, eval_res.val_ccr, color=colors[idx], alpha=0.1, linewidth=5)
+        plt.semilogx(eval_res.test_neg_fpr, eval_res.test_neg_ccr, linestyle='-.', color=colors[idx], alpha=0.2)
+        plt.semilogx(eval_res.test_unkn_fpr, eval_res.test_unkn_ccr, linestyle='-', color=colors[idx], label=d_i['label'])
 
     if lim != None:
         plt.xlim(lim[0])
         plt.ylim(lim[1])
     else:
-        plt.xlim((-0.02,1.02))
+        plt.xlim((0.8e-3,1.2))
     plt.xlabel('False Positive Rate')
     plt.ylabel('Correct Classification Rate')
     plt.grid(True)
     plt.legend()
-    plt.show()
 
-def plot_confusion_mat(data_info, colors='viridis', figsize=(5,5), set_diag_mask=False, set_cmap_range=None, show_numbers=True, diag_sort=False):
+def plot_confusion_mat(data_info, colors='viridis', figsize=(5,5), include_unknown=False, set_diag_mask=False, set_cmap_range=None, show_numbers=True, diag_sort=False):
 
     for d_i in data_info:
 
@@ -174,39 +174,58 @@ def plot_confusion_mat(data_info, colors='viridis', figsize=(5,5), set_diag_mask
         
         root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
         eval_res = eval_results(root_path)
-        
-        knowns = eval_res.test_unkn_gt != -1
-        known_gt = eval_res.test_unkn_gt[knowns]
-        known_probs = eval_res.test_unkn_probs[knowns]
-        known_pred = numpy.argmax(known_probs, axis=1)
 
-        cm = confusion_matrix(known_gt, known_pred)
+        knowns = eval_res.test_unkn_gt != -1
+        unknowns = ~knowns
+        
+        labels = numpy.unique(eval_res.test_unkn_gt[knowns])
+
+        if include_unknown:
+            threshold = 0.5
+            gt = eval_res.test_unkn_gt
+            pred = numpy.where(numpy.max(eval_res.test_unkn_probs, axis=1) >= threshold,
+                               numpy.argmax(eval_res.test_unkn_probs, axis=1), -1)
+            labels = numpy.append(labels, -1)
+        else:
+            known_gt = eval_res.test_unkn_gt[knowns]
+            known_probs = eval_res.test_unkn_probs[knowns]
+            known_pred = numpy.argmax(known_probs, axis=1)
+
+            gt = known_gt
+            pred = known_pred
+
+        cm = confusion_matrix(gt, pred, labels=labels)
         if diag_sort:
             diag = numpy.diag(cm)
             idx=numpy.argsort(diag)[::-1]
             cm = cm[idx,:][:,idx]
+        else:
+            idx = range(cm.shape[0])
         plt.figure(figsize=figsize)
         if set_diag_mask: 
             mask = numpy.eye(cm.shape[0],dtype=int)
             cm = numpy.ma.masked_array(cm, mask=mask)
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
         disp.plot(cmap=colors, include_values=show_numbers, values_format='.0f')
         if not show_numbers:
             disp.ax_.set_xticklabels([])
             disp.ax_.set_yticklabels([])
-        else:
-            disp.ax_.set_xticklabels(idx)
-            disp.ax_.set_yticklabels(idx)
+        # else:
+        #     disp.ax_.set_xticklabels(labels)
+        #     disp.ax_.set_yticklabels(labels)
         if set_cmap_range != None:
             disp.im_.set_clim(vmin=set_cmap_range[0], vmax=set_cmap_range[1])
 
 def plot_fpr_fnr_class(data_info, color=('red','green'), ylim=(0.0,0.5)):
 
-    fpr_fnr_results = compute_fpr_fnr(data_info)
-
-    for _, fpr_fnr in enumerate(fpr_fnr_results):
-        fig, axs = plt.subplots(2,1,figsize=(len(fpr_fnr)*0.3,2))
-        for idx, c_fpr_fnr in enumerate(fpr_fnr):
+    for d_i in data_info:
+        info = d_i['info']
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        eval_res = eval_results(root_path)
+        fpr_fnr_results, _, _, _, _ = compute_fpr_fnr(eval_res)
+        # print(fpr_fnr_results)
+        fig, axs = plt.subplots(2,1,figsize=(len(fpr_fnr_results)*0.3,2))
+        for idx, c_fpr_fnr in enumerate(fpr_fnr_results):
             axs[0].bar(idx, c_fpr_fnr['fpr'], color=color[0], width=0.7)
             axs[1].bar(idx, c_fpr_fnr['fnr'], color=color[1], width=0.7)
 
@@ -216,7 +235,7 @@ def plot_fpr_fnr_class(data_info, color=('red','green'), ylim=(0.0,0.5)):
 
         axs[1].set_ylabel('FNR')
         axs[1].set_ylim(ylim)
-        axs[1].set_xticks(range(len(fpr_fnr)), [])
+        axs[1].set_xticks(range(len(fpr_fnr_results)), [])
         axs[1].set_xlabel('class')
         axs[1].set_yticklabels([label.get_text() if i > 0 else '' for i, label in enumerate(axs[0].get_yticklabels())])
         axs[1].invert_yaxis()
@@ -229,16 +248,23 @@ def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, fig
     if marker == None:
         marker = ['o'] * len(data_info)
 
-    fpr_fnr_results = compute_fpr_fnr(data_info)
+    fpr_fnr_results = []
+    avg_results = []
+    std_results = []
+    for d_i in data_info:
+        info = d_i['info']
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        eval_res = eval_results(root_path)
+        res, avg, std, _, _ = compute_fpr_fnr(eval_res)
+        fpr_fnr_results.append(res)
+        avg_results.append(avg)
+        std_results.append(std)
 
     print(f"average\tstd\tmodel")
     plt.figure(figsize=figsize)
     results = []
-    for i, fpr_fnr in enumerate(fpr_fnr_results):
-        diff = []
-        for _, c_fpr_fnr in enumerate(fpr_fnr):
-            diff.append(abs(c_fpr_fnr['fpr']-c_fpr_fnr['fnr']))
-        avg, std = numpy.average(diff), numpy.std(diff)
+    for i, _ in enumerate(fpr_fnr_results):
+        avg, std = avg_results[i], std_results[i]
         plt.errorbar(y=i, x=avg, xerr=std, color=color[i], capsize=3, fmt=marker[i])
         if i == 0:
             plt.fill_between([avg - std, avg + std], -1, len(data_info)+1, alpha=0.05, color=color[i])
@@ -267,41 +293,81 @@ def plot_fpr_fnr(data_info, hlines=[0.5, 3.5, 6.5], color=None, marker=None, fig
 
     return results
 
-def compute_fpr_fnr(data_info):
-
-    results = []
-    for d_i in data_info:
-
-        info = d_i['info']
+def compute_fpr_fnr(eval_res):
         
-        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
-        eval_res = eval_results(root_path)
+    if eval_res.val_gt is None:
+        res = [{'fpr': 0,'fnr':  0}]
+    else:
+        y_true = eval_res.test_unkn_gt
+        y_probs = eval_res.test_unkn_probs
+        y_pred = numpy.argmax(y_probs, axis=1)
+
+        res = []
+        classes = [uq for uq in numpy.unique(y_true) if uq >=0]
+        for c in classes:
+            # one-vs-rest
+            y_true_c = y_true == c
+            y_pred_c = numpy.logical_and(y_pred == c, y_probs[range(len(y_pred)), y_pred] >= 0.5)
+            tn, fp, fn, tp = metrics.confusion_matrix(y_true_c, y_pred_c).ravel()
+            res.append({'fpr': fp/(fp + tn),'fnr':  fn/(fn + tp)})
+
+        fpr = numpy.array([r['fpr'] for r in res])
+        fnr = numpy.array([r['fnr'] for r in res])
+        diff = abs(fpr-fnr)
+        avg, std, min, max = numpy.average(diff), numpy.std(diff), numpy.min(diff), numpy.max(diff)
+
+    return res, avg, std, min, max
+
+def plot_metrics(results:list, colors:list, color_labels:list, items:list, item_labels:list, item_ylims:list, xticks:list, figsize=(7,5)):
+
+    assert len(items) <= 2, f"The number of items can be either 1 or 2. Given {len(items)} {items}"
+
+    fig, ax1 = plt.subplots(figsize=figsize)
+    # ax2 = ax1.twinx()
+    handles = []
+    for i in range(len(results)):
+        result, color = results[i], colors[i]
+        x = numpy.arange(len(xticks)) + 0.1 * i
+
+        result_0, label_0, ylim_0 = result[items[0]], item_labels[0], item_ylims[0]
+        p1 = ax1.scatter(x, result_0, color = color, marker='o', zorder=100)
+        ax1.plot(x, result_0, color = color, ls='--', lw=1, alpha=0.5)
+        h_p = (p1)
+        if i == 0:
+            ax1.set_xticks(ticks=x, labels=xticks)
+            ax1.set_xlabel('# of negatives in training set')
+            ax1.set_ylabel(label_0+' (o)')
+            ax1.set_ylim(ylim_0)
+
+        if len(items) == 2:
+            result_1, label_1, ylim_1 = result[items[1]], item_labels[1], item_ylims[1]
+            p2 = ax1.scatter(x, result_1, color = color, marker='x', zorder=100)
+            ax1.plot(x, result_1, color = color, ls='--', lw=1, alpha=0.5)
+            h_p = (p1,p2)
+
+            ax1.set_ylabel(label_0 + ' (o)' + '  /  ' + label_1 + ' (x)')
+
+            # result_1, label_1, ylim_1 = result[items[1]], item_labels[1], item_ylims[1]
+            # p2 = ax2.scatter(x, result_1, color = color, marker='*', s=70, zorder=100)
+            # ax2.plot(x, result_1, color = color, ls='--', lw=1, alpha=0.5)
+            # h_p = (p1,p2)
+            # if i == 0:
+            #     ax2.set_ylabel(label_1+' (*)')
+            #     ax2.set_ylim(ylim_1)
+
+        handles.append(h_p)
         
-        if eval_res.val_gt is None:
-            res = [{'fpr': 0,'fnr':  0}]
-        else:
-            y_true = eval_res.test_unkn_gt
-            y_probs = eval_res.test_unkn_probs
-            y_pred = numpy.argmax(y_probs, axis=1)
 
-            res = []
-            classes = [uq for uq in numpy.unique(y_true) if uq >=0]
-            for c in classes:
-                # one-vs-rest problem
-                y_true_c = y_true == c
-                y_pred_c = numpy.logical_and(y_pred == c, y_probs[range(len(y_pred)),y_pred] >= 0.5)
-                tn, fp, fn, tp = metrics.confusion_matrix(y_true_c, y_pred_c).ravel()
-                res.append({'fpr': fp/(fp + tn),'fnr':  fn/(fn + tp)})
-
-        results.append(res)
-    
-    return results
+    ax1.grid(axis='y')
+    # fig.legend(handles, color_labels, loc='lower center', bbox_to_anchor=(0.5, 0.2), shadow=True, ncol=4, handler_map={tuple: HandlerTuple(ndivide=None)})
+    fig.legend(handles, color_labels, loc='upper center', bbox_to_anchor=(0.55, 0.2), shadow=True, ncol=4, handler_map={tuple: HandlerTuple(ndivide=None)})
+    fig.tight_layout()
 
 def print_metrics(data_info, is_verbose=True):
     
     res = dict()
-    print("\t\t\toosa\t\t\tiosa")
-    print("acc\tauroc\topenauc\t_val\t_neg\t_unkn *\t_neg\t_unkn")
+    # print("\t\t\t\tiosa\t\t\toosa")
+    print("acc\t|FPR-FNR|\topenauc\tiosa_val\tiosa_neg\tiosa_unkn*\toosa_neg\toosa_unkn")
     for idx, d_i in enumerate(data_info):
 
         info = d_i['info']
@@ -311,7 +377,7 @@ def print_metrics(data_info, is_verbose=True):
     
         if eval_res.val_gt is None:
             acc, auroc_c, openauc = 0, 0, 0
-            oosa = {'oosa_val': 0, 'oosa_neg': 0, 'oosa_unkn': 0, 'iosa_neg': 0, 'iosa_unkn':0}
+            oosa = {'iosa_val': 0, 'iosa_neg': 0, 'iosa_unkn': 0, 'oosa_neg': 0, 'oosa_unkn':0}
 
         else: 
             max_score = numpy.max(eval_res.test_unkn_probs, axis=1)
@@ -322,9 +388,11 @@ def print_metrics(data_info, is_verbose=True):
             known_probs = eval_res.test_unkn_probs[knowns]
             known_pred = numpy.argmax(known_probs, axis=1)
             acc = compute_acc(known_gt, known_pred)
+            _, avg, std, min, max = compute_fpr_fnr(eval_res)
+
             # precision = compute_precision(known_gt, known_pred,'macro')
             # f1 = compute_f1score(known_gt, known_pred,'macro')
-            auroc_c = compute_auroc(known_gt, known_probs, 'macro', by_class=True)
+            # auroc_c = compute_auroc(known_gt, known_probs, 'macro', by_class=True)
 
             # Open-set evaluation metrics
             # auprc_o = compute_auprc(eval_res.test_unkn_gt, eval_res.test_unkn_probs, 'macro')
@@ -334,16 +402,18 @@ def print_metrics(data_info, is_verbose=True):
                                 eval_res.test_neg_thrs, eval_res.test_neg_osa, 
                                 eval_res.test_unkn_thrs, eval_res.test_unkn_osa)
         if is_verbose:
-            print(f"{acc:.4f}\t{auroc_c:.4f}\t{openauc:.4f}\t{oosa['oosa_val']:.4f}\t{oosa['oosa_neg']:.4f}\t{oosa['oosa_unkn']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}")
+            print(f"{acc:.4f}\t{avg:.4f}±{std:.4f}\t{openauc:.4f}\t{oosa['iosa_val']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}\t{oosa['oosa_neg']:.4f}\t{oosa['oosa_unkn']:.4f}")
 
         if idx == 0:
             res['acc'] = [acc]
-            res['auroc_c'] = [auroc_c]
+            # res['auroc_c'] = [auroc_c]
+            res['fpr_fnr'] = [{'avg':avg, 'std':std, 'min':min, 'max':max}]
             res['openauc'] = [openauc]
             res['oosa'] = [oosa]
         else:
             res['acc'].append(acc)
-            res['auroc_c'].append(auroc_c)
+            # res['auroc_c'].append(auroc_c)
+            res['fpr_fnr'].append({'avg':avg, 'std':std, 'min':min, 'max':max})
             res['openauc'].append(openauc)
             res['oosa'].append(oosa)
 
@@ -413,7 +483,7 @@ def compute_openauc(max_prob_known, max_prob_unknown, pred, labels):
 
 def compute_oosa(thrs_val, osa_val, thrs_neg, osa_neg, thrs_unkn, osa_unkn):
     op_thrs = thrs_val[numpy.argmax(osa_val)]
-    oosa_val = numpy.max(osa_val)
+    iosa_val = numpy.max(osa_val)
 
     op_idx = numpy.argmax(thrs_neg > op_thrs) - 1
     oosa_neg = osa_neg[op_idx]
@@ -423,7 +493,7 @@ def compute_oosa(thrs_val, osa_val, thrs_neg, osa_neg, thrs_unkn, osa_unkn):
     oosa_unkn = osa_unkn[op_idx]
     iosa_unkn = numpy.max(osa_unkn)
 
-    return {'oosa_val': oosa_val, 'oosa_neg': oosa_neg, 'oosa_unkn': oosa_unkn, 'iosa_neg': iosa_neg, 'iosa_unkn':iosa_unkn}
+    return {'iosa_val': iosa_val, 'iosa_neg': iosa_neg, 'iosa_unkn': iosa_unkn, 'oosa_neg': oosa_neg, 'oosa_unkn':oosa_unkn}
 
 def compute_auprc(gt, probs, average):
 
@@ -688,7 +758,72 @@ def plot_oscr_detail(results_plot, data_info_plot, CMAP, markers=None, FPR_vals=
     plt.figure(figsize=(3,2))
     plt.legend(handles=handles, loc='center',).axes.axis('off')
 
-def plot_dist_prob(data_info, num_classes, bins, seeds, figsize=(10,3), ylim=(5e-7, 1.5)):
+def plot_score_dist(data_info, bins, colors, figsize=(10,3), ylim=None):
+
+    center = (bins[:-1] + bins[1:]) / 2
+
+    for idx in range(len(data_info)):
+        plt.figure(figsize=figsize)
+
+        info = data_info[idx]['info']
+
+        # Load evaluation results
+        root_path = f'/home/user/hkim/UZH-MT/openset-binary/_results/{info[0]}/_s42/{info[1]}/eval_{info[2]}/{info[3]}'
+        # folder_path = f"./_results/{item['info'][0]}/_s{s}/eval_{item['info'][1]}/{item['info'][2]}"
+        results = eval_results(root_path)
+
+        # Get Target and Non-target score distribution
+        knowns = results.test_neg_gt != -1
+        known_gt = results.test_neg_gt[knowns]
+        known_score = results.test_neg_probs[knowns,:]
+
+        target_mask = numpy.full(known_score.shape, False)
+        target_mask[range(target_mask.shape[0]),known_gt] = True
+        target_score = known_score[range(known_score.shape[0]), known_gt]
+        
+        non_target_score = numpy.reshape(known_score[~target_mask], (-1, known_score.shape[1]-1))
+        non_target_max_score = numpy.max(non_target_score, axis=1)
+
+        # Get Negatives and Unknown score distribution
+        negatives = results.test_neg_gt == -1
+        neg_score = results.test_neg_probs[negatives,:]
+        neg_max_score = numpy.max(neg_score, axis=1)
+
+        unknowns = results.test_unkn_gt == -1
+        unkn_score = results.test_unkn_probs[unknowns,:]
+        unkn_max_score = numpy.max(unkn_score, axis=1)
+
+        # Get histogram data
+        target_score_hist, _ = numpy.histogram(target_score, bins=bins, density=False)
+        non_target_max_score_hist, _ = numpy.histogram(non_target_max_score, bins=bins, density=False)
+        neg_max_score_hist, _ = numpy.histogram(neg_max_score, bins=bins, density=False)
+        unkn_max_score_hist, _ = numpy.histogram(unkn_max_score, bins=bins, density=False)
+
+        # Histogram data range from 0 to 1
+        target_score_hist = target_score_hist/sum(target_score_hist)
+        non_target_max_score_hist = non_target_max_score_hist/sum(non_target_max_score_hist)
+        neg_max_score_hist = neg_max_score_hist/sum(neg_max_score_hist)
+        unkn_max_score_hist = unkn_max_score_hist/sum(unkn_max_score_hist)
+        print(target_score_hist[:4], non_target_max_score_hist[:4])
+        plt.scatter(center, target_score_hist, color = colors[0], label='Target', marker='x')
+        plt.scatter(center, non_target_max_score_hist, color = colors[1], label='Non-target', marker='x')
+        plt.scatter(center, neg_max_score_hist, color = colors[2], label='Negative', marker='+')
+        plt.scatter(center, unkn_max_score_hist, color = colors[3],label='Unknown', marker='+')
+
+        if ylim == None:
+            plt.ylim((0,1))
+        else:
+            plt.ylim(ylim)
+            plt.yscale('log')
+        # plt.xticks([])
+        plt.ylabel('ratio')
+        plt.xlabel('score')
+        plt.grid(axis='both')
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), shadow=True, ncol=4)
+        plt.tight_layout()
+
+
+def __plot_dist_prob(data_info, num_classes, bins, seeds, figsize=(10,3), ylim=(5e-7, 1.5)):
 
     center = (bins[:-1] + bins[1:]) / 2
 
