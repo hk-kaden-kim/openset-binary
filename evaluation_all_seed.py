@@ -37,7 +37,7 @@ def command_line_options():
 
     parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
     parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
-    parser.add_argument("--category", "-ct", required=True, choices=['_RQ1','_RQ2','_RQ3','_Discussion','_Tuning'])
+    parser.add_argument("--category", "-ct", required=True, choices=['_RQ1','_RQ2','_RQ3','_Discussion','_Tuning','etc'])
     parser.add_argument("--arch", "-ar", required=True)
     parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
     parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
@@ -218,14 +218,21 @@ if __name__ == '__main__':
     #                ('LeNet_M_neg_30k_04', ['OpenSetOvR'], 30000),
     #                ('LeNet_M_neg_30k_02', ['OvR'],        30000),]
     
+    # experiments = [['ResNet_50_C_neg_0_g',['OpenSetOvR','OvR'],'_RQ2'],
+    #                ['ResNet_50_F_neg_0_1',['OvR'],'_RQ2'],
+    #                ['ResNet_50_M_neg_0_04',['OpenSetOvR','OvR'],'_RQ2'],
+    #                ['ResNet_50_C_neg_All_b',['OpenSetOvR'],'_RQ3'],
+    #                ['ResNet_50_F_neg_All_1',['OpenSetOvR'],'_RQ3'],
+    #                ['ResNet_50_M_neg_All_06',['OpenSetOvR'],'_RQ3'],
+    #                ['ResNet_50_C_neg_All_g',['OvR'],'_RQ3'],
+    #                ['ResNet_50_F_neg_All_3',['OvR'],'_RQ3'],]
     # print(experiments)
     # for s in args.seed:
     #     for item in experiments:
     #         args.arch = item[0]
-    #         args.approach =item[1]
-    #         config.data.train_neg_size = item[2]
-    #         print('Change to : ', args.arch, args.approach, config.data.train_neg_size)
-    #         # assert False
+    #         args.approach = item[1]
+    #         args.category = item[2]
+    #         print('Change to : ', args.arch, args.approach, args.category)
     #         evaluate(args, config, s)
     #         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     #         print("\n\nEvaluation Done!")
