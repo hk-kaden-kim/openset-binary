@@ -62,7 +62,7 @@ def calc_class_ratio(num_of_classes, labels, init_val=1, is_verbose=False):
 
     return tools.device(pos_ratio), tools.device(neg_ratio)
 
-def get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha,):
+def _get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha,):
 
     # Only consider negative's probability
     neg_probs = torch.where(enc_labels!=1, probs, -1)
@@ -93,6 +93,40 @@ def get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha,):
 
     # Get the final masks including all postives and mined negatives
     mining_mask = torch.where(torch.logical_or(enc_labels==1, k_mask==1), 1, 0)
+    return tools.device(mining_mask)
+
+def get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha,):
+
+    # Only consider negative's probability
+    neg_probs = torch.where(enc_labels!=1, probs, -1)
+
+    # Initialize the mask
+    k_mask = torch.zeros(enc_labels.shape)
+    k_mask = tools.device(k_mask)
+
+    for i, p_cnt in enumerate(pos_cnts):
+        n_cnt = neg_cnts[i]
+
+        # Mining all negatives if there is no positives
+        if p_cnt == 0:
+            k_mask[:,i] == 1
+            continue
+        
+        # Get k for the mining
+        c_k = alpha*(n_cnt - p_cnt) + p_cnt 
+        # print(c_k, p_cnt, n_cnt)
+        # Mining all negatives if k is larger than # of negatives 
+        if c_k > n_cnt:
+            k_mask[:,i] = 1
+            continue
+        
+        # Hard Negative Minings : Negatives with a high probability
+        c_k_idxs = torch.topk(neg_probs[:,i], int(c_k)).indices
+        k_mask[c_k_idxs, i] = p_cnt/c_k
+
+    # Get the final masks including all postives and mined negatives
+    # mining_mask = torch.where(torch.logical_or(enc_labels==1, k_mask==1), 1, 0)
+    mining_mask = enc_labels + k_mask
     return tools.device(mining_mask)
 
 class OvRLoss_Weight:
