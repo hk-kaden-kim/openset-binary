@@ -226,13 +226,15 @@ if __name__ == '__main__':
     #                ['ResNet_50_M_neg_All_06',['OpenSetOvR'],'_RQ3'],
     #                ['ResNet_50_C_neg_All_g',['OvR'],'_RQ3'],
     #                ['ResNet_50_F_neg_All_3',['OvR'],'_RQ3'],]
+    # experiments = [
+    #     '0', '02', '04', '06', '08'
+    # ]
     # print(experiments)
+    # base_arch = args.arch
     # for s in args.seed:
     #     for item in experiments:
-    #         args.arch = item[0]
-    #         args.approach = item[1]
-    #         args.category = item[2]
-    #         print('Change to : ', args.arch, args.approach, args.category)
+    #         args.arch = base_arch + f"_{item}"
+    #         print('Change to : ', args.arch)
     #         evaluate(args, config, s)
     #         print("\n\n+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     #         print("\n\nEvaluation Done!")

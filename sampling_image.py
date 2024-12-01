@@ -92,9 +92,38 @@ def imagenet_save_img(imagenet_dataset, size=10, root='./'):
 #########################################################
 # SmallScale Dataset
 #########################################################
-# print("CHECK! - SmallScale Dataset")
-# dataset_root = '/local/scratch/hkim'
-# data = dataset.EMNIST(dataset_root, convert_to_rgb=False)
+print("CHECK! - SmallScale Dataset")
+dataset_root = '/local/scratch/hkim'
+data = dataset.EMNIST(dataset_root, convert_to_rgb=False)
+
+data_mnist = data.train_mnist
+data_letter = data.test_letters
+
+kn_targets = [0,1,2,3,4,5,6,7,8,9]
+neg_targets = [1,2,3,4,5,6,8,10,11,13,14]
+unkn_targets = [16,17,18,19,20,21,22,23,24,25,26]
+
+for targets in kn_targets:
+    kn_idxs = [i for i, t in enumerate(data_mnist.targets) if t == targets]
+    selected_idxs = np.random.choice(kn_idxs, 2)
+    for idx in selected_idxs:
+        x = data_mnist[idx][0]
+        plt.imsave(f"./_images/mnist/mnist_{targets}_{idx}.png", x.squeeze().numpy(), cmap='Greys')
+
+for targets in neg_targets:
+    kn_idxs = [i for i, t in enumerate(data_letter.targets) if t == targets]
+    selected_idxs = np.random.choice(kn_idxs, 2)
+    for idx in selected_idxs:
+        x = data_letter[idx][0]
+        plt.imsave(f"./_images/letter/letter_neg_{targets}_{idx}.png", x.squeeze().numpy(), cmap='Greys')
+
+for targets in unkn_targets:
+    kn_idxs = [i for i, t in enumerate(data_letter.targets) if t == targets]
+    selected_idxs = np.random.choice(kn_idxs, 2)
+    for idx in selected_idxs:
+        x = data_letter[idx][0]
+        plt.imsave(f"./_images/letter/letter_unkn_{targets}_{idx}.png", x.squeeze().numpy(), cmap='Greys')
+
 
 # training_data, val_data, num_classes = data.get_train_set(has_background_class=False,
 #                                                           size_train_negatives=20000)
@@ -124,12 +153,12 @@ def imagenet_save_img(imagenet_dataset, size=10, root='./'):
 
 #     if not pos and y == 7:
 #         print('Get 7', y, x.shape)
-#         plt.imsave("7.png", x.squeeze().numpy(), cmap='gray')
+#         plt.imsave("7.png", x.squeeze().numpy(), cmap='Greys')
 #         pos = True
 
 #     if not neg and y == -1:
 #         print('Get Letter', y, x.shape)
-#         plt.imsave("letter.png", x.squeeze().numpy(), cmap='gray')
+#         plt.imsave("letter.png", x.squeeze().numpy(), cmap='Greys')
 #         neg = True
 
 #     if pos and neg:

@@ -213,7 +213,7 @@ def plot_OSA(data_info, colors, labels=None, figsize=(5,3), lim=None, show_val=F
         plt.ylim(lim[1])
     else:
         plt.xlim((-0.02,1.02))
-    plt.title('Test Set: Known + Negative')
+    plt.title('OSA Plot\nwith Testset Negative ($D_K \cup D_N$)')
     plt.xlabel('URR')
     plt.ylabel('OSA')
     plt.grid(True)
@@ -273,7 +273,7 @@ def plot_OSA(data_info, colors, labels=None, figsize=(5,3), lim=None, show_val=F
         plt.ylim(lim[1])
     else:
         plt.xlim((-0.02,1.02))
-    plt.title('Test Set: Known + Unknown')
+    plt.title('OSA Plot\nwith Testset Unknown ($D_K \cup D_U$)')
     plt.xlabel('URR')
     plt.ylabel('OSA')
     plt.grid(True)
@@ -552,6 +552,7 @@ def compute_fpr_fnr(eval_res):
             'fpr_n_avg':fpr_n_avg, 'fpr_n_std':fpr_n_std,
             'fnr_avg':fnr_avg, 'fnr_std':fnr_std}
 
+
 def plot_metrics(results:list, colors:list, color_labels:list, items:list, item_labels:list, item_ylims:list, xticks:list, figsize=(7,5)):
 
     assert len(items) <= 2, f"The number of items can be either 1 or 2. Given {len(items)} {items}"
@@ -603,9 +604,9 @@ def print_metrics(data_info, show_osa_v=False, is_verbose=True):
 
     # print("FPR↓\tFNR↓\tmaxOSA_N↑\tmaxOSA_U↑")
     if show_osa_v:
-        print("FPR(NT)↓\tFPR(U)↓\tFPR(N)↓\tFNR↓\tmaxOSA_N↑\tmaxOSA_U↑\tmaxOSA_V↑")
+        print("maxOSA_V↑\tmaxOSA_N↑\tmaxOSA_U↑\tFNR(1e-1)↓\tFPR(NT)↓\tFPR(N)↓\tFPR(U)↓")
     else:
-        print("FPR(NT)↓\tFPR(U)↓\tFPR(N)↓\tFNR↓\tmaxOSA_N↑\tmaxOSA_U↑")
+        print("maxOSA_N↑\tmaxOSA_U↑\tFNR(1e-1)↓\tFPR(NT)↓\tFPR(N)↓\tFPR(U)↓")
 
     for idx, d_i in enumerate(data_info):
 
@@ -634,9 +635,9 @@ def print_metrics(data_info, show_osa_v=False, is_verbose=True):
 
         if is_verbose:
             if show_osa_v:
-                print(f"{res_fpr_fnr['fpr_nt_avg']:.4f}\t{res_fpr_fnr['fpr_u_avg']:.4f}\t{res_fpr_fnr['fpr_n_avg']:.4f}\t{res_fpr_fnr['fnr_avg']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}\t{oosa['iosa_val']:.4f}")
+                print(f"{oosa['iosa_val']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}\t{10*res_fpr_fnr['fnr_avg']:.4f}\t{10*res_fpr_fnr['fpr_nt_avg']:.4f}\t{10*res_fpr_fnr['fpr_n_avg']:.4f}\t{10*res_fpr_fnr['fpr_u_avg']:.4f}")
             else:
-                print(f"{res_fpr_fnr['fpr_nt_avg']:.4f}\t{res_fpr_fnr['fpr_u_avg']:.4f}\t{res_fpr_fnr['fpr_n_avg']:.4f}\t{res_fpr_fnr['fnr_avg']:.4f}\t{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}")
+                print(f"{oosa['iosa_neg']:.4f}\t{oosa['iosa_unkn']:.4f}\t{10*res_fpr_fnr['fnr_avg']:.4f}\t{10*res_fpr_fnr['fpr_nt_avg']:.4f}\t{10*res_fpr_fnr['fpr_n_avg']:.4f}\t{10*res_fpr_fnr['fpr_u_avg']:.4f}")
 
         if idx == 0:
             res['res_fpr_fnr'] = [res_fpr_fnr]
@@ -1062,8 +1063,7 @@ def _plot_score_dist(data_info, bins, colors, figsize=(10,3), ylim=None, plot_ne
         plt.gca().yaxis.set_minor_formatter(ticker.NullFormatter())
         plt.tight_layout()
 
-
-def plot_score_dist(data_info, bins, colors, figsize=(10,3), ylim=None, plot_neg=True):
+def plot_score_dist(data_info, bins, colors, title, figsize=(10,3), ylim=None, plot_neg=True):
 
     center = (bins[:-1] + bins[1:]) / 2
 
@@ -1111,11 +1111,17 @@ def plot_score_dist(data_info, bins, colors, figsize=(10,3), ylim=None, plot_neg
         unkn_max_score_hist = 100 * unkn_max_score_hist/sum(unkn_max_score_hist)
         print(target_score_hist[:4], non_target_max_score_hist[:4])
 
+        # if plot_neg:
+        #     plt.scatter(center, neg_max_score_hist, color = colors[2], label='Negative', marker='_', linewidths=2)
+        # plt.scatter(center, unkn_max_score_hist, color = colors[3],label='Unknown', marker='_', linewidths=2)
+        # plt.scatter(center, non_target_max_score_hist, color = colors[1], label='Non-target', marker='_', linewidths=2)
+        # plt.scatter(center, target_score_hist, color = colors[0], label='Target', marker='+', linewidths=2)
+
         if plot_neg:
-            plt.scatter(center, neg_max_score_hist, color = colors[2], label='Negative', marker='_', linewidths=2)
-        plt.scatter(center, unkn_max_score_hist, color = colors[3],label='Unknown', marker='_', linewidths=2)
-        plt.scatter(center, non_target_max_score_hist, color = colors[1], label='Non-target', marker='_', linewidths=2)
-        plt.scatter(center, target_score_hist, color = colors[0], label='Target', marker='+', linewidths=2)
+            plt.bar(center, neg_max_score_hist, color = colors[2], label='Negative', width=bins[1]-bins[0],edgecolor='black')
+        plt.bar(center, unkn_max_score_hist, color = colors[3],label='Unknown', width=bins[1]-bins[0],edgecolor='black')
+        plt.bar(center, non_target_max_score_hist, color = colors[1], label='Non-target', width=bins[1]-bins[0],edgecolor='black')
+        plt.bar(center, target_score_hist, color = colors[0], label='Target', width=bins[1]-bins[0],edgecolor='black', hatch='//')
 
         # plt.plot(center, target_score_hist, color = colors[0], label='Target')
         # plt.plot(center, non_target_max_score_hist, color = colors[1], label='Non-target')
@@ -1129,12 +1135,15 @@ def plot_score_dist(data_info, bins, colors, figsize=(10,3), ylim=None, plot_neg
             plt.yscale('log')
         else:
             plt.ylim(ylim)
-            plt.yscale('log')
+            # plt.yscale('log')
         # plt.xticks([])
         # plt.ylabel('ratio')
         plt.xlabel('score')
-        plt.title(data_info[idx]['label'])
-        plt.grid(axis='both')
+        if title[idx] == None:
+            plt.title(data_info[idx]['label'])
+        else:
+            plt.title(title[idx])
+        plt.grid(axis='y')
         plt.gca().yaxis.set_major_formatter(ticker.PercentFormatter(decimals=1))
         plt.gca().yaxis.set_minor_formatter(ticker.NullFormatter())
         plt.tight_layout()
