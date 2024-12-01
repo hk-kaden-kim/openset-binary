@@ -107,18 +107,13 @@ def get_mining_mask(probs, enc_labels, pos_cnts, neg_cnts, alpha,):
     for i, p_cnt in enumerate(pos_cnts):
         n_cnt = neg_cnts[i]
 
-        # Mining all negatives if there is no positives
-        if p_cnt == 0:
+        # Mining all negatives if there is no positives or more positives than negatives
+        if p_cnt == 0 or p_cnt > n_cnt:
             k_mask[:,i] == 1
             continue
         
         # Get k for the mining
         c_k = alpha*(n_cnt - p_cnt) + p_cnt 
-        # print(c_k, p_cnt, n_cnt)
-        # Mining all negatives if k is larger than # of negatives 
-        if c_k > n_cnt:
-            k_mask[:,i] = 1
-            continue
         
         # Hard Negative Minings : Negatives with a high probability
         c_k_idxs = torch.topk(neg_probs[:,i], int(c_k)).indices
@@ -276,11 +271,15 @@ class OvRLoss:
                 weight = self.osovr_weight.get_m_weight(probs, target_labels, enc_target_labels,
                                                         mining_size=self.mode.M)
                 weight_total = weight_total * weight
-            all_loss = F.binary_cross_entropy(probs, enc_target_labels, weight = weight_total.detach())
-            # assert False, f"Validation Check! Basic OSOvR Loss"
-        else:
-            all_loss = F.binary_cross_entropy(probs, enc_target_labels)
 
+            # all_loss = F.binary_cross_entropy(probs, enc_target_labels, weight = weight_total.detach())
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels, weight = weight_total.detach(), reduction='none')
+            all_loss = torch.mean(torch.sum(all_loss, dim=1))
+            
+        else:
+            # all_loss = F.binary_cross_entropy(probs, enc_target_labels)
+            all_loss = F.binary_cross_entropy(probs, enc_target_labels, reduction='none')
+            all_loss = torch.mean(torch.sum(all_loss, dim=1))
         return all_loss
 
 

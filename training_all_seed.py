@@ -296,20 +296,21 @@ if __name__ == "__main__":
     # ---------------------------------------------------
     # Basic working process
     # ---------------------------------------------------
-    for s in args.seed:
-        change_lr_1 = args.scale == 'LargeScale_3' and args.approach == 'OpenSetOvR'
-        try:
-            change_lr_2 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
-            change_lr_3 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.4 and config.data.train_neg_size == 0
-            change_lr_4 = args.scale == 'LargeScale_2' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
-            change_lr_5 = args.scale == 'LargeScale_2' and args.approach == 'OvR' and config.loss.osovr.mode.M == 0.4
-        except:
-            change_lr_2, change_lr_3, change_lr_4, change_lr_5 = False, False, False, False
-        if change_lr_1 or change_lr_2 or change_lr_3 or change_lr_4 or change_lr_5:
-            config.opt.lr = 1.e-4
-            print(f"Learning rate changed : (new) {config.opt.lr}")
-        worker(args, config, s)
-        print("Training Done!\n\n\n")
+    # for s in args.seed:
+    #     change_lr_1 = args.scale == 'LargeScale_3' and args.approach == 'OpenSetOvR'
+    #     try:
+    #         change_lr_2 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+    #         change_lr_3 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.4 and config.data.train_neg_size == 0
+    #         change_lr_4 = args.scale == 'LargeScale_2' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+    #         change_lr_5 = args.scale == 'LargeScale_2' and args.approach == 'OvR' and config.loss.osovr.mode.M == 0.4
+    #         change_lr_6 = 'LargeScale' in args.scale  and config.loss.osovr.mode.M != None
+    #     except:
+    #         change_lr_2, change_lr_3, change_lr_4, change_lr_5, change_lr_6 = False, False, False, False, False
+    #     if change_lr_1 or change_lr_2 or change_lr_3 or change_lr_4 or change_lr_5 or change_lr_6:
+    #         config.opt.lr = 1.e-4
+    #         print(f"Learning rate changed : (new) {config.opt.lr}")
+    #     worker(args, config, s)
+    #     print("Training Done!\n\n\n")
 
 
     # ---------------------------------------------------
@@ -321,10 +322,9 @@ if __name__ == "__main__":
     #     (1, 'OvR'),             (2, 'OvR'),             (3, 'OvR'),
     # ]
     # LargeScale_1 LargeScale_3 F neg All
-    # experiments = [
-    #     ('LargeScale_3', 'OvR', 'ResNet_50_F_neg_0_1'),
-    #     ('LargeScale_3', 'OpenSetOvR', 'ResNet_50_C_neg_0_g'),
-    # ]
+    experiments = [
+        0, 10000, 20000, 30000, -1
+    ]
     # SmallScale C 10k 20k 30k
     # experiments = [
     #     (10000, 'batch', 'OpenSetOvR'), (20000, 'batch', 'OpenSetOvR'), (30000, 'batch', 'OpenSetOvR'),
@@ -335,45 +335,43 @@ if __name__ == "__main__":
     #     (10000, 2, 'OpenSetOvR'), (20000, 2, 'OpenSetOvR'), (30000, 2, 'OpenSetOvR'),
     #     (10000, 3, 'OvR'), (20000, 3, 'OvR'), (30000, 3, 'OvR'),
     # ]
-    # # SmallScale M 10k 20k 30k
+    # SmallScale M 10k 20k 30k
     # experiments = [
-    #     (10000, 0.4, 'OpenSetOvR'), (20000, 0.4, 'OpenSetOvR'), (30000, 0.4, 'OpenSetOvR'),
-    #     (10000, 0.2, 'OvR'), (20000, 0.2, 'OvR'), (30000, 0.2, 'OvR'),
+    #     # 0, 0.2, 0.4, 0.6, 0.8
+    #     0.2, 0.6
+    #     # (10000, 0.2, 'OvR'), (20000, 0.2, 'OvR'), (30000, 0.2, 'OvR'),
     # ]
 
-    # BASE_ARCH = args.arch
-    # for s in args.seed:
-    #     for item in experiments:
+    BASE_ARCH = args.arch
+    for s in args.seed:
+        for item in experiments:
             
-    #         # Change configuration
-    #         args.scale = item[0]
-    #         print(f"Change to : {args.scale}")
-    #         args.approach = item[1]
-    #         print(f"Change to : {args.approach}")
-    #         args.arch = item[2]
-    #         print(f"Change to : {args.arch}")
-    #         # args.arch = BASE_ARCH + '_' + str(item[0])
-    #         # print(f"Change to : {args.arch}")
-    #         # if args.approach == 'OvR':
-    #         #     config.loss.ovr.mode.F = item[0]
-    #         #     print(f"Change to : {config.loss.ovr.mode.F}")
-    #         # else:
-    #         #     config.loss.osovr.mode.F = item[0]
-    #         #     print(f"Change to : {config.loss.osovr.mode.F}")
+            # Change configuration
+            # args.scale = item[0]
+            # print(f"Change to : {args.scale}")
+            # args.approach = item[1]
+            # print(f"Change to : {args.approach}")
+            # args.arch = item[2]
+            # print(f"Change to : {args.arch}")
+            args.arch = BASE_ARCH + f"_{item}"
+            print(args.arch)
+            config.data.train_neg_size = item
+            print(f"Change Neg Size to : {config.data.train_neg_size}")
 
-    #         # Run!
-    #         change_lr_1 = args.scale == 'LargeScale_3' and args.approach == 'OpenSetOvR'
-    #         try:
-    #             change_lr_2 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
-    #             change_lr_3 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.4 and config.data.train_neg_size == 0
-    #             change_lr_4 = args.scale == 'LargeScale_2' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
-    #             change_lr_5 = args.scale == 'LargeScale_2' and args.approach == 'OvR' and config.loss.osovr.mode.M == 0.4
-    #         except:
-    #             change_lr_2, change_lr_3, change_lr_4, change_lr_5 = False, False, False, False
-    #         if change_lr_1 or change_lr_2 or change_lr_3 or change_lr_4 or change_lr_5:
-    #             config.opt.lr = 1.e-4
-    #             print(f"Learning rate changed : (new) {config.opt.lr}")
-    #         worker(args, config, s)
-    #         print("Training Done!\n\n\n")
+            # Run!
+            change_lr_1 = args.scale == 'LargeScale_3' and args.approach == 'OpenSetOvR'
+            try:
+                change_lr_2 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+                change_lr_3 = args.scale == 'LargeScale_1' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.4 and config.data.train_neg_size == 0
+                change_lr_4 = args.scale == 'LargeScale_2' and args.approach == 'OpenSetOvR' and config.loss.osovr.mode.M == 0.6
+                change_lr_5 = args.scale == 'LargeScale_2' and args.approach == 'OvR' and config.loss.osovr.mode.M == 0.4
+                change_lr_6 = 'LargeScale' in args.scale  and config.loss.osovr.mode.M != None
+            except:
+                change_lr_2, change_lr_3, change_lr_4, change_lr_5, change_lr_6 = False, False, False, False, False
+            if change_lr_1 or change_lr_2 or change_lr_3 or change_lr_4 or change_lr_5 or change_lr_6:
+                config.opt.lr = 1.e-4
+                print(f"Learning rate changed : (new) {config.opt.lr}")
+            worker(args, config, s)
+            print("Training Done!\n\n\n")
 
     print("All training done!")
