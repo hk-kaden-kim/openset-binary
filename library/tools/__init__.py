@@ -1,15 +1,18 @@
 from .lossReduction import loss_reducer
-from .viz import *
 from .. import dataset
+from .. import losses
 
 import yaml
 import numpy
 import random
-from torch import nn
+import argparse
 
-# ---------------------------------------------------
-# Interface
-# ---------------------------------------------------
+from torch import nn
+import torch
+
+###################################
+# for Interface
+###################################
 class NameSpace:
     def __init__(self, config):
         # recurse through config
@@ -52,11 +55,10 @@ def print_table(unique_values:numpy.array, value_counts:numpy.array, max_columns
     print()
 
 def train_command_line_options():
-    import argparse
+
 
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description='...TBD'
     )
 
     parser.add_argument("--config", "-cf", default='config/train.yaml', help="The configuration file that defines the experiment")
@@ -68,52 +70,38 @@ def train_command_line_options():
 
     return parser.parse_args()
 
+def eval_command_line_options():
 
+    labels={
+    "SoftMax" : "Plain SoftMax",
+    "EOS" : "Entropic Open-Set",
+    "OvR" : "One-vs-Rest Classifiers",
+    "etc": None
+    }
 
-# ---------------------------------------------------
-# Models
-# ---------------------------------------------------
-class EarlyStopping:
-    # Taken from:
-    # https://github.com/Lance0218/Pytorch-DistributedDataParallel-Training-Tricks/
-    """ Stops the training if validation loss/metrics doesn't improve after a given patience"""
-    def __init__(self, patience=100, delta=0):
-        """
-        Args:
-            patience(int): How long wait after last time validation loss improved. Default: 100
-            delta(float): Minimum change in the monitored quantity to qualify as an improvement
-                            Default: 0
-        """
-        self.patience = patience
-        self.counter = 0
-        self.best_score = None
-        self.early_stop = False
-        self.delta = delta
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
-    def __call__(self, metrics, loss=True):
-        if loss is True:
-            score = -metrics
-        else:
-            score = metrics
+    parser.add_argument("--config", "-cf", default='config/eval.yaml', help="The configuration file that defines the experiment")
+    parser.add_argument("--scale", "-sc", required=True, choices=['SmallScale', 'LargeScale', 'LargeScale_1', 'LargeScale_2', 'LargeScale_3'], help="Choose the scale of evaluation dataset.")
+    parser.add_argument("--arch", "-ar", required=True)
+    parser.add_argument("--approach", "-ap", nargs="+", default=list(labels.keys()), choices=list(labels.keys()), help = "Select the approaches to evaluate; non-existing models will automatically be skipped")
+    parser.add_argument("--seed", "-s", default=42, nargs="+", type=int)
+    parser.add_argument("--gpu", "-g", type=int, nargs="?", const=0, help="If selected, the experiment is run on GPU. You can also specify a GPU index")
 
-        if self.best_score is None:
-            self.best_score = score
-        elif score < self.best_score + self.delta:
-            self.counter += 1
-            if self.counter >= self.patience:
-                self.early_stop = True
-        else:
-            self.best_score = score
-            self.counter = 0
+    return parser.parse_args()
 
+###################################
+# for Models
+###################################
 def get_data_and_loss(args, config, arch_name, seed):
     """...TBD..."""
 
     if args.scale == 'SmallScale':
         data = dataset.EMNIST(config.data.smallscale.root, 
                               split_ratio = config.data.smallscale.split_ratio, 
-                              label_filter=config.data.smallscale.label_filter,
-                              seed = seed, convert_to_rgb='ResNet' in args.arch)
+                              seed = seed)
     else:
         data = dataset.IMAGENET(config.data.largescale.root, 
                                 protocol_root = config.data.largescale.protocol, 
@@ -121,20 +109,16 @@ def get_data_and_loss(args, config, arch_name, seed):
                                 is_verbose=True)
     
     if args.approach == "SoftMax":
-        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
+        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size)
         loss_func=nn.CrossEntropyLoss(reduction='mean', ignore_index=-1)
     
     elif args.approach == "EOS":
-        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
+        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size)
         loss_func=losses.entropic_openset_loss(num_of_classes=num_classes, unkn_weight=config.loss.eos.unkn_weight)
 
     elif args.approach == 'OvR':
-        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
+        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, size_train_negatives=config.data.train_neg_size)
         loss_func=losses.OvRLoss(num_of_classes=num_classes, mode=config.loss.ovr.mode, training_data=training_data)
-
-    elif args.approach == "OpenSetOvR":
-        training_data, val_data, num_classes = data.get_train_set(is_verbose=True, has_background_class=False, size_train_negatives=config.data.train_neg_size)
-        loss_func=losses.OSOvRLoss(num_of_classes=num_classes, sigma=config.loss.osovr.sigma.dict()[arch_name], mode=config.loss.osovr.mode, training_data=training_data)
 
     return dict(
                 loss_func=loss_func,
@@ -180,13 +164,14 @@ def set_seeds(seed):
     """
     torch.manual_seed(seed)
     random.seed(seed)
-    np.random.seed(seed)
+    numpy.random.seed(seed)
 
     print(f"Seed: {seed}")
 
-# ---------------------------------------------------
-# Environment
-# ---------------------------------------------------
+
+###################################
+# for Environment
+###################################
 _device = None
 
 def device(x):

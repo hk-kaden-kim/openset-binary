@@ -1,7 +1,6 @@
 ##########################################
 # Evaluation Parameters
 ##########################################
-# seed: 42        # Common seed across all source of randomness
 batch_size: 
   smallscale: 2048 # Fixed
   largescale: 256 # Fixed
@@ -14,20 +13,13 @@ openset_save: 1    # Set as '1' if you want to save the openset performance data
 data:
   smallscale:
     root: /local/scratch/hkim # EMNIST path
-    label_filter: [-1]        # [-1] for no filtering. ex. [1,2] only use sample '1' and '2'
   largescale:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
-  train_neg_size: -1 # -1 for using all. SmallScale : < 42240  LargeScale_1 : LargeScale_2 : LargeScale_3 : 
 
 ##########################################
 # Architecture Parameters
 ##########################################
 arch:
-  model_root: ../../_models/v2
+  model_root: ../../_models
   feat_dim: -1  # -1 for using default value.
-
-osovr_sigma: 
-  LeNet_plus_plus: 8      # 6 04.10.2024
-  LeNet: 8             # 6 04.10.2024
-  ResNet_50: 8

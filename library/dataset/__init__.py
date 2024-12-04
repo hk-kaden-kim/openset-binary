@@ -1,3 +1,3 @@
-__all__ = ["EMNIST"]
+__all__ = ["EMNIST", "IMAGENET"]
 
 from .dataset import *

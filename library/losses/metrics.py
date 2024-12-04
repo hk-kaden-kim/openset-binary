@@ -1,16 +1,13 @@
 import torch
 from torch.nn import functional as F
-from .. import tools
-from .activations import OpenSetOvR
 
 """This file contains different metrics that can be applied to evaluate the training"""
 
-# #######################################################################
-# Author: Vision And Security Technology (VAST) Lab in UCCS
-# Date: 2024
-# Availability: https://github.com/Vastlab/vast?tab=readme-ov-file
-# #######################################################################
-
+########################################################################
+# Reference: 
+# Vision And Security Technology (VAST) Lab in UCCS
+# https://github.com/Vastlab/vast?tab=readme-ov-file
+########################################################################
 
 def accuracy(scores, target):
     """Computes the classification accuracy of the classifier based on known samples only.
@@ -41,21 +38,6 @@ def accuracy(scores, target):
             correct = 0
 
     return torch.tensor((correct, total))
-
-# def accuracy_osovr(prediction, target):
-#     with torch.no_grad():
-#         known = target >= 0
-
-#         total = torch.sum(known, dtype=int)
-#         if total:
-#             correct = torch.sum(
-#                 # Get the closest value to logit 0
-#                 torch.min(torch.abs(prediction[known]), axis=1).indices == target[known], dtype=int
-#             )
-#         else:
-#             correct = 0
-
-#     return torch.tensor((correct, total))
 
 def confidence(scores:torch.Tensor, labels:torch.Tensor, offset=0., unknown_class = -1, last_valid_class = None):
     """ Returns model's confidence, Taken from https://github.com/Vastlab/vast/tree/main/vast.

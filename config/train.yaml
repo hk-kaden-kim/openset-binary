@@ -4,7 +4,7 @@
 seed: 42        # Common seed across all source of randomness
 batch_size: 
   smallscale: 128 # 128
-  largescale: 64  # batch size is 64 because of the memory constraint but increase the epochs to 120, then, all data can be seen enough time to the model.
+  largescale: 16  # batch size is 64 because of the memory constraint.
 epochs:
   smallscale: 70 # 70
   largescale: 120 # 120
@@ -19,7 +19,6 @@ data:
   smallscale:
     root: /local/scratch/hkim # EMNIST path
     split_ratio: 0.8
-    label_filter: [-1]        # [-1] for no filtering. ex. [1,2] only use sample '1' and '2'
   largescale:
     root: /local/scratch/datasets/ImageNet/ILSVRC2012 # ILSVRC2012 path
     protocol: ../../data/LargeScale # ImageNet Protocol root path
@@ -37,18 +36,9 @@ arch:
 loss:
   eos:
     unkn_weight: 1
-  osovr:
-    sigma:        # LeNet_plus_plus : 6     LeNet : 8       ResNet_50 : 8
-      LeNet_plus_plus: 8   
-      LeNet: 8           
-      ResNet_50: 8
-    mode: # (Scale) : (Neg 0)/(Neg All)
-      # C: 'global'   # Small : 'global' / 'batch'     Large : 'global' / 'batch'
-      # F: 1       # Small : 3 / 2           Large : 1 / 1            
-      # M: 0.6       # Small : 0.4 / 0.4         Large : 0.2 (0.4) / 0.6
   ovr:
     mode: # (Scale) : (Neg 0)/(Neg All)
-      # C: 'global'   # Small : 'global' / 'batch'     Large : 'global' / 'batch'
+      # C: 'batch'   # Small : 'global' / 'batch'     Large : 'global' / 'batch'
       # F: 1          # Small : 2 / 1           Large : 1 / 3            
       # M: 0.2       # Small : 0.4 / 0.2         Large : 0.2 / 0.2
 
@@ -56,7 +46,6 @@ loss:
 # Optimizer Parameters
 ##########################################
 opt:    # Adam optimizer
-  lr: 1.e-3  # 1.e-3 / 1.e-4 (P3 OSOvR). Initial learning rate
-  # lr2: 1.e-4  # P3 OSOvR, P2 M 0.4 OvR
+  lr: 1.e-3  
   decay: 0    # 0. Number of epochs to wait for each learning rate reduction. 0 means no decay
   gamma: 1    # 1. Factor to reduce the learning rate

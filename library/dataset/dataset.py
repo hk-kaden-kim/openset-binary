@@ -24,14 +24,7 @@ def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=False):
 
     if is_verbose:
         print(f"Get Ground Truth Labels.")
-    # if gpu is not None and torch.cuda.is_available():
-    #     tools.set_device_gpu(gpu)
-    # else:
-    #     if is_verbose:
-    #         print("Running in CPU mode, might be slow")
-    #     tools.set_device_cpu()
 
-    # gt_labels = tools.device(torch.Tensor())
     gt_labels = []
     data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -39,46 +32,24 @@ def get_gt_labels(dataset, batch_size=1024, gpu=None, is_verbose=False):
         for (_, y) in tqdm(data_loader, miniters=int(len(data_loader)/5), maxinterval=600, disable=not is_verbose):
             y = tools.device(y)
             gt_labels.extend(y.tolist())
-            # gt_labels = torch.cat((gt_labels, y))
 
     gt_labels = tools.device(torch.Tensor(gt_labels))
 
     return gt_labels
 
-def calc_class_weight(dataset, batch_size=1024, gpu=None, is_verbose=False):
-    
-    gt_labels = get_gt_labels(dataset, batch_size, gpu, is_verbose)
-    total_num = len(gt_labels)
-    u_labels, cnts = gt_labels.unique(return_counts=True)
-    u_labels = u_labels.to(torch.int)
-
-    c_w = []
-    for l in u_labels:
-        c_w.append(cnts[l]/total_num)
-
-    return tools.device(torch.Tensor(c_w))
-
 
 class EMNIST():
-    """...
-
-    Parameters:
-
-    ... : ...
-
-    """
     
-    def __init__(self, dataset_root, split_ratio=0.8, label_filter=[-1], seed=42, convert_to_rgb=False):
+    def __init__(self, dataset_root, split_ratio=0.8, seed=42):
+
         print("\n↓↓↓ Dataset setup ↓↓↓")
         print(f"{self.__class__.__name__} Dataset Loaded!")
+
         self.dataset_root = dataset_root
         self.split_ratio = split_ratio
         self.seed = seed
-        self.label_filter = label_filter
 
         data_transform = [transforms.ToTensor(), transpose]
-        if convert_to_rgb:
-            data_transform.append(transforms.Lambda(lambda x: x.repeat(3, 1, 1)))
 
         self.train_mnist = torchvision.datasets.EMNIST(
                         root=self.dataset_root,
@@ -109,65 +80,61 @@ class EMNIST():
                         transform=transforms.Compose(data_transform)
                     )
         
-    def get_train_set(self, size_train_negatives=-1, has_background_class=False, is_verbose=True):
+    def get_train_set(self, size_train_negatives=-1, is_verbose=True):
         
-        # Get MNIST for Known samples
-        if self.label_filter[0] == -1:
-            mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
-        else:
-            mnist_idxs = [i for i, t in enumerate(self.train_mnist.targets) if t in self.label_filter]
-            if is_verbose: print(f"Filtered Target Label : {self.label_filter}")
+        # Training Known sample idxs in MNIST: Split to train and val (8:2)
+        mnist_idxs = [i for i, _ in enumerate(self.train_mnist.targets)]
         tr_mnist_idxs, val_mnist_idxs = train_test_split(mnist_idxs, train_size=self.split_ratio, random_state=self.seed)
-        tr_mnist, val_mnist = Subset(self.train_mnist, tr_mnist_idxs), Subset(self.train_mnist, val_mnist_idxs)
 
-        # Get Letters for Neg Samples
-        letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
+        # Training Negative sample idxs in Letters: Split to train and val (8:2)
+        letters_targets = [1,2,3,4,5,6,8,10,11,13,14] # a ~ n (exclude g, i, l, o)
         letters_idxs = [i for i, t in enumerate(self.train_letters.targets) if t in letters_targets]
         tr_letters_idxs, val_letters_idxs = train_test_split(letters_idxs, train_size=self.split_ratio, random_state=self.seed)
 
-        # Negatives in training
+        # Prepare Train and Validation set based on the number of Negatives
         if size_train_negatives == 0:
-            if is_verbose:
-                print(f"# of negatives for training: {size_train_negatives}")
-            val_letters = Subset(self.train_letters, val_letters_idxs)
-            val_letters = EmnistUnknownDataset(val_letters,has_background_class)
-            train_emnist = ConcatDataset([tr_mnist])
-            val_emnist = ConcatDataset([val_mnist, val_letters])
-        else:
+
+            if is_verbose: print(f"# of negatives for training: {size_train_negatives}")
+
+            train_emnist = ConcatDataset([Subset(self.train_mnist, tr_mnist_idxs)])
+            val_emnist = ConcatDataset([Subset(self.train_mnist, val_mnist_idxs), 
+                                        EmnistUnknownDataset(Subset(self.train_letters, val_letters_idxs))])
+
+        else:         
+            # Using all prepared negatives in training set
+            if size_train_negatives == -1:
+                if is_verbose: print(f"# of negatives for training: -1 >> ALL {len(tr_letters_idxs)}")
+
             # Reduce the size of negatives in training set
             if size_train_negatives > 0:
-                assert len(tr_letters_idxs) > size_train_negatives, f"The required size of train negatives ({size_train_negatives}) is too big. It should be smaller than  {len(tr_letters_idxs)}, which is {len(letters_idxs)} x {self.split_ratio}."
+                assert len(tr_letters_idxs) > size_train_negatives, f"Number of {size_train_negatives}) is too big. (Should be smaller than {len(tr_letters_idxs)})"
                 tr_letters_idxs = list(np.sort(np.random.choice(tr_letters_idxs, size_train_negatives)))
-                if is_verbose:
-                    print(f"# of negatives for training: {size_train_negatives} {len(tr_letters_idxs)}")
-            elif size_train_negatives == -1:
-                if is_verbose:
-                    print(f"# of negatives for training: -1 >> ALL {int(len(tr_letters_idxs))}")
-            tr_letters, val_letters = Subset(self.train_letters, tr_letters_idxs), Subset(self.train_letters, val_letters_idxs)
-            tr_letters, val_letters = EmnistUnknownDataset(tr_letters,has_background_class), EmnistUnknownDataset(val_letters,has_background_class)
-            train_emnist = ConcatDataset([tr_mnist, tr_letters])
-            val_emnist = ConcatDataset([val_mnist, val_letters])
+                if is_verbose: print(f"# of negatives for training: {len(tr_letters_idxs)}")
 
-        return (train_emnist, val_emnist, 10 if self.label_filter[0] == -1 else len(self.label_filter))
+            train_emnist = ConcatDataset([Subset(self.train_mnist, tr_mnist_idxs), 
+                                          EmnistUnknownDataset(Subset(self.train_letters, tr_letters_idxs))])
+            val_emnist = ConcatDataset([Subset(self.train_mnist, val_mnist_idxs), 
+                                        EmnistUnknownDataset(Subset(self.train_letters, val_letters_idxs))])
 
-    def get_test_set(self, has_background_class=False, is_verbose=True):
+        return (train_emnist, val_emnist, 10)
 
-        if self.label_filter[0] == -1:
-            mnist_idxs = [i for i, _ in enumerate(self.test_mnist.targets)]
-        else:
-            mnist_idxs = [i for i, t in enumerate(self.test_mnist.targets) if t in self.label_filter]
-            if is_verbose: print(f"Filtered Target Label : {self.label_filter}")
+    def get_test_set(self):
+
+        # Testing Known samples in MNIST
+        mnist_idxs = [i for i, _ in enumerate(self.test_mnist.targets)]
         test_mnist = Subset(self.test_mnist, mnist_idxs)
 
-        letters_targets = [1,2,3,4,5,6,8,10,11,13,14]
+        # Testing Negative samples in Letters
+        letters_targets = [1,2,3,4,5,6,8,10,11,13,14] # a ~ n (exclude g, i, l, o)
         letters_idxs = [i for i, t in enumerate(self.test_letters.targets) if t in letters_targets]
         test_neg_letters = Subset(self.test_letters, letters_idxs)
-        test_neg_letters = EmnistUnknownDataset(test_neg_letters,has_background_class)
+        test_neg_letters = EmnistUnknownDataset(test_neg_letters)
 
-        letters_targets = [16,17,18,19,20,21,22,23,24,25,26]
+        # Testing Unknown samples in Letters
+        letters_targets = [16,17,18,19,20,21,22,23,24,25,26] # p ~ z
         letters_idxs = [i for i, t in enumerate(self.test_letters.targets) if t in letters_targets]
         test_unkn_letters = Subset(self.test_letters, letters_idxs)
-        test_unkn_letters = EmnistUnknownDataset(test_unkn_letters,has_background_class)
+        test_unkn_letters = EmnistUnknownDataset(test_unkn_letters)
 
         test_kn_neg = ConcatDataset([test_mnist, test_neg_letters])
         test_kn_unkn = ConcatDataset([test_mnist, test_unkn_letters])
@@ -177,19 +144,18 @@ class EMNIST():
 
 class EmnistUnknownDataset(torch.utils.data.dataset.Subset):
 
-    def __init__(self, subset, has_background_class):
+    def __init__(self, subset):
         self.dataset = subset.dataset
         self.indices = subset.indices
-        self.has_background_class = has_background_class
 
     def __len__(self):
         return len(self.indices)
 
     def __getitem__(self, index):
-        return self.dataset[self.indices[index]][0], 10 if self.has_background_class else -1
+        return self.dataset[self.indices[index]][0], -1
 
     def check_len(self, index):
-        return index, int(self.dataset.targets[self.indices[index]]), 10 if self.has_background_class else -1
+        return index, int(self.dataset.targets[self.indices[index]]), -1
 
     def check_stats(self):
         label = []
@@ -290,16 +256,13 @@ class IMAGENET():
 
         return test_dataset, test_neg_dataset, test_unkn_dataset
 
-
-########################################################################
-# Reference
-# 
-# Author: UZH AIML Group
-# Date: 2024
-# Availability: https://github.com/AIML-IfI/openset-imagenet
-########################################################################
-
 class ImagenetDataset(torch.utils.data.dataset.Dataset):
+    ########################################################################
+    # Reference: 
+    # UZH AIML Group
+    # https://github.com/AIML-IfI/openset-imagenet
+    ########################################################################
+
     """ Imagenet Dataset. """
 
     def __init__(self, csv_file, imagenet_path, transform=None):
